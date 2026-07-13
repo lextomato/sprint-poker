@@ -47,7 +47,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    image: sprint-pocket-api:${GITHUB_SHA:-local}
+    image: sprint-poker-api:${GITHUB_SHA:-local}
     restart: unless-stopped
     env_file:
       - .env
@@ -70,25 +70,25 @@ services:
       traefik.enable: "true"
       traefik.docker.network: traefik_default
 
-      traefik.http.routers.sprint-pocket-api.rule: Host(`${API_DOMAIN}`)
-      traefik.http.routers.sprint-pocket-api.entrypoints: websecure
-      traefik.http.routers.sprint-pocket-api.tls.certresolver: le
-      traefik.http.routers.sprint-pocket-api.service: sprint-pocket-api
+      traefik.http.routers.sprint-poker-api.rule: Host(`${API_DOMAIN}`)
+      traefik.http.routers.sprint-poker-api.entrypoints: websecure
+      traefik.http.routers.sprint-poker-api.tls.certresolver: le
+      traefik.http.routers.sprint-poker-api.service: sprint-poker-api
 
-      traefik.http.routers.sprint-pocket-api-http.rule: Host(`${API_DOMAIN}`)
-      traefik.http.routers.sprint-pocket-api-http.entrypoints: web
-      traefik.http.routers.sprint-pocket-api-http.middlewares: sprint-pocket-api-redirect
+      traefik.http.routers.sprint-poker-api-http.rule: Host(`${API_DOMAIN}`)
+      traefik.http.routers.sprint-poker-api-http.entrypoints: web
+      traefik.http.routers.sprint-poker-api-http.middlewares: sprint-poker-api-redirect
 
-      traefik.http.middlewares.sprint-pocket-api-redirect.redirectscheme.scheme: https
-      traefik.http.middlewares.sprint-pocket-api-redirect.redirectscheme.permanent: "true"
+      traefik.http.middlewares.sprint-poker-api-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.sprint-poker-api-redirect.redirectscheme.permanent: "true"
 
-      traefik.http.services.sprint-pocket-api.loadbalancer.server.port: "4000"
+      traefik.http.services.sprint-poker-api.loadbalancer.server.port: "4000"
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    image: sprint-pocket-web:${GITHUB_SHA:-local}
+    image: sprint-poker-web:${GITHUB_SHA:-local}
     restart: unless-stopped
     env_file:
       - .env
@@ -104,24 +104,24 @@ services:
       traefik.enable: "true"
       traefik.docker.network: traefik_default
 
-      traefik.http.routers.sprint-pocket-web.rule: Host(`${WEB_DOMAIN}`)
-      traefik.http.routers.sprint-pocket-web.entrypoints: websecure
-      traefik.http.routers.sprint-pocket-web.tls.certresolver: le
-      traefik.http.routers.sprint-pocket-web.service: sprint-pocket-web
+      traefik.http.routers.sprint-poker-web.rule: Host(`${WEB_DOMAIN}`)
+      traefik.http.routers.sprint-poker-web.entrypoints: websecure
+      traefik.http.routers.sprint-poker-web.tls.certresolver: le
+      traefik.http.routers.sprint-poker-web.service: sprint-poker-web
 
-      traefik.http.routers.sprint-pocket-web-www.rule: Host(`www.${WEB_DOMAIN}`)
-      traefik.http.routers.sprint-pocket-web-www.entrypoints: websecure
-      traefik.http.routers.sprint-pocket-web-www.tls.certresolver: le
-      traefik.http.routers.sprint-pocket-web-www.service: sprint-pocket-web
+      traefik.http.routers.sprint-poker-web-www.rule: Host(`www.${WEB_DOMAIN}`)
+      traefik.http.routers.sprint-poker-web-www.entrypoints: websecure
+      traefik.http.routers.sprint-poker-web-www.tls.certresolver: le
+      traefik.http.routers.sprint-poker-web-www.service: sprint-poker-web
 
-      traefik.http.routers.sprint-pocket-web-http.rule: Host(`${WEB_DOMAIN}`) || Host(`www.${WEB_DOMAIN}`)
-      traefik.http.routers.sprint-pocket-web-http.entrypoints: web
-      traefik.http.routers.sprint-pocket-web-http.middlewares: sprint-pocket-web-redirect
+      traefik.http.routers.sprint-poker-web-http.rule: Host(`${WEB_DOMAIN}`) || Host(`www.${WEB_DOMAIN}`)
+      traefik.http.routers.sprint-poker-web-http.entrypoints: web
+      traefik.http.routers.sprint-poker-web-http.middlewares: sprint-poker-web-redirect
 
-      traefik.http.middlewares.sprint-pocket-web-redirect.redirectscheme.scheme: https
-      traefik.http.middlewares.sprint-pocket-web-redirect.redirectscheme.permanent: "true"
+      traefik.http.middlewares.sprint-poker-web-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.sprint-poker-web-redirect.redirectscheme.permanent: "true"
 
-      traefik.http.services.sprint-pocket-web.loadbalancer.server.port: "3000"
+      traefik.http.services.sprint-poker-web.loadbalancer.server.port: "3000"
 
 volumes:
   pgdata:

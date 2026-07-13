@@ -1,4 +1,4 @@
-name: Build & Deploy Sprint Pocket
+name: Build & Deploy Sprint Poker
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: sprint-pocket-deploy
+  group: sprint-poker-deploy
   cancel-in-progress: true
 
 jobs:
@@ -26,12 +26,12 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            REPO_DIR=/srv/sprint-pocket
-            ENV_FILE=/srv/secret-envs/sprint-pocket.env
+            REPO_DIR=/srv/sprint-poker
+            ENV_FILE=/srv/secret-envs/sprint-poker.env
 
             # Uses the per-repo SSH host alias defined in ~/.ssh/config on the
-            # server, so the dedicated sprint-pocket deploy key is used.
-            REPO_URL=git@github-sprint-pocket:${{ github.repository }}.git
+            # server, so the dedicated sprint-poker deploy key is used.
+            REPO_URL=git@github-sprint-poker:${{ github.repository }}.git
 
             # Trust github.com host key so non-interactive clone/fetch works.
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
