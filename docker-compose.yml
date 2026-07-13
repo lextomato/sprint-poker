@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: planning
-      POSTGRES_PASSWORD: planning
-      POSTGRES_DB: planning
+      POSTGRES_USER: sprint
+      POSTGRES_PASSWORD: sprint
+      POSTGRES_DB: sprint
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U planning -d planning"]
+      test: ["CMD-SHELL", "pg_isready -U sprint -d sprint"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,7 +34,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://planning:planning@postgres:5432/planning
+      DATABASE_URL: postgresql://sprint:sprint@postgres:5432/sprint
       REDIS_HOST: redis
       CORS_ORIGIN: http://localhost:3000
     ports:
@@ -44,7 +44,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "pnpm --filter @planning/api db:migrate && pnpm --filter @planning/api start:prod"
+    command: sh -c "pnpm --filter @sprint/api db:migrate && pnpm --filter @sprint/api start:prod"
 
   web:
     build:

@@ -1,4 +1,4 @@
-name: Build & Deploy Planning Pocket
+name: Build & Deploy Sprint Pocket
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: planning-pocket-deploy
+  group: sprint-pocket-deploy
   cancel-in-progress: true
 
 jobs:
@@ -26,12 +26,12 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            REPO_DIR=/srv/planning-pocket
-            ENV_FILE=/srv/secret-envs/planning-pocket.env
+            REPO_DIR=/srv/sprint-pocket
+            ENV_FILE=/srv/secret-envs/sprint-pocket.env
 
             # Uses the per-repo SSH host alias defined in ~/.ssh/config on the
-            # server, so the dedicated planning-pocket deploy key is used.
-            REPO_URL=git@github-planning-pocket:${{ github.repository }}.git
+            # server, so the dedicated sprint-pocket deploy key is used.
+            REPO_URL=git@github-sprint-pocket:${{ github.repository }}.git
 
             # Trust github.com host key so non-interactive clone/fetch works.
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
