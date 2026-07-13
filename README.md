@@ -1,6 +1,6 @@
-# Planning Pocket
+# Sprint Poker
 
-Planning Pocket is a functional MVP for realtime agile estimation with private Planning Poker votes, simultaneous reveal, basic statistics, final estimates, reconnection, and persisted session history.
+Sprint Poker is a functional MVP for realtime agile estimation with private Planning Poker votes, simultaneous reveal, basic statistics, final estimates, reconnection, and persisted session history.
 
 ## Requirements
 
@@ -32,8 +32,8 @@ Create the server env file from `.env.production.example`:
 
 ```bash
 sudo mkdir -p /srv/secret-envs
-sudo cp .env.production.example /srv/secret-envs/planning-pocket.env
-sudo nano /srv/secret-envs/planning-pocket.env
+sudo cp .env.production.example /srv/secret-envs/sprint-poker.env
+sudo nano /srv/secret-envs/sprint-poker.env
 ```
 
 Required GitHub Actions secrets:
@@ -43,14 +43,14 @@ VPS_IP
 VPS_SSH_KEY
 ```
 
-The deploy workflow clones or updates the repo in `/srv/planning-pocket`, copies
-`/srv/secret-envs/planning-pocket.env` to `.env`, and runs:
+The deploy workflow clones or updates the repo in `/srv/sprint-poker`, copies
+`/srv/secret-envs/sprint-poker.env` to `.env`, and runs:
 
 ```bash
 GITHUB_SHA=<sha> docker compose -f docker-compose.prod.yml up -d --build --pull always --force-recreate --remove-orphans
 ```
 
-The VPS `deploy` user must have an SSH host alias named `github-planning-pocket`
+The VPS `deploy` user must have an SSH host alias named `github-sprint-poker`
 configured in `~/.ssh/config` for the repository deploy key.
 
 ## Local Development

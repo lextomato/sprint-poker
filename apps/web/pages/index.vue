@@ -66,8 +66,8 @@ function openRecentRoom(room: RecentRoom) {
     </div>
     <section class="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[1fr_420px]">
       <div class="flex flex-col justify-center">
-        <UBadge class="mb-4 w-fit" color="teal" variant="subtle">Planning Pocket</UBadge>
-        <h1 class="max-w-xl text-5xl font-bold text-gray-950 dark:text-white">Planning Pocket</h1>
+        <UBadge class="mb-4 w-fit" color="teal" variant="subtle">Sprint Poker</UBadge>
+        <h1 class="max-w-xl text-5xl font-bold text-gray-950 dark:text-white">Sprint Poker</h1>
         <p class="mt-4 max-w-xl text-lg text-gray-600 dark:text-gray-300">Estimaciones agiles en tiempo real con votos privados, revelado simultaneo e historial de sesion.</p>
         <div class="mt-6 flex max-w-md gap-2">
           <UInput v-model="joinCode" class="flex-1" placeholder="Codigo de sala" @keyup.enter="goJoin" />
