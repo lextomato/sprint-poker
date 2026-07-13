@@ -1,0 +1,135 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+      else
+        redis-server --appendonly yes;
+      fi'
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a "$$REDIS_PASSWORD" ping; else redis-cli ping; fi',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: planning-pocket-api:${GITHUB_SHA:-local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    command: sh -c "pnpm --filter @planning/api db:migrate && pnpm --filter @planning/api start:prod"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - web
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik_default
+
+      traefik.http.routers.planning-pocket-api.rule: Host(`${API_DOMAIN}`)
+      traefik.http.routers.planning-pocket-api.entrypoints: websecure
+      traefik.http.routers.planning-pocket-api.tls.certresolver: le
+      traefik.http.routers.planning-pocket-api.service: planning-pocket-api
+
+      traefik.http.routers.planning-pocket-api-http.rule: Host(`${API_DOMAIN}`)
+      traefik.http.routers.planning-pocket-api-http.entrypoints: web
+      traefik.http.routers.planning-pocket-api-http.middlewares: planning-pocket-api-redirect
+
+      traefik.http.middlewares.planning-pocket-api-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.planning-pocket-api-redirect.redirectscheme.permanent: "true"
+
+      traefik.http.services.planning-pocket-api.loadbalancer.server.port: "4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: planning-pocket-web:${GITHUB_SHA:-local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - api
+    networks:
+      - web
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik_default
+
+      traefik.http.routers.planning-pocket-web.rule: Host(`${WEB_DOMAIN}`)
+      traefik.http.routers.planning-pocket-web.entrypoints: websecure
+      traefik.http.routers.planning-pocket-web.tls.certresolver: le
+      traefik.http.routers.planning-pocket-web.service: planning-pocket-web
+
+      traefik.http.routers.planning-pocket-web-www.rule: Host(`www.${WEB_DOMAIN}`)
+      traefik.http.routers.planning-pocket-web-www.entrypoints: websecure
+      traefik.http.routers.planning-pocket-web-www.tls.certresolver: le
+      traefik.http.routers.planning-pocket-web-www.service: planning-pocket-web
+
+      traefik.http.routers.planning-pocket-web-http.rule: Host(`${WEB_DOMAIN}`) || Host(`www.${WEB_DOMAIN}`)
+      traefik.http.routers.planning-pocket-web-http.entrypoints: web
+      traefik.http.routers.planning-pocket-web-http.middlewares: planning-pocket-web-redirect
+
+      traefik.http.middlewares.planning-pocket-web-redirect.redirectscheme.scheme: https
+      traefik.http.middlewares.planning-pocket-web-redirect.redirectscheme.permanent: "true"
+
+      traefik.http.services.planning-pocket-web.loadbalancer.server.port: "3000"
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  web:
+    external: true
+    name: traefik_default
+  internal:
+    driver: bridge

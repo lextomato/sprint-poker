@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomStatus {
+  WAITING
+  VOTING
+  REVEALED
+  CLOSED
+}
+
+enum ParticipantRole {
+  MODERATOR
+  VOTER
+  OBSERVER
+}
+
+enum StoryStatus {
+  PENDING
+  ACTIVE
+  ESTIMATED
+  SKIPPED
+}
+
+model Room {
+  id                     String             @id @default(uuid())
+  code                   String             @unique
+  name                   String
+  status                 RoomStatus         @default(WAITING)
+  deck                   String             @default("FIBONACCI")
+  activeStoryId          String?
+  currentRound           Int                @default(0)
+  moderatorParticipantId String?
+  revealConfig           Json?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  lastActivityAt         DateTime           @default(now())
+  closedAt               DateTime?
+  participants           Participant[]
+  stories                Story[]
+  rounds                 EstimationRound[]
+  votes                  Vote[]
+  chatMessages           ChatMessage[]
+  reactions              AvatarReaction[]
+
+  @@index([code])
+  @@index([status])
+}
+
+model Participant {
+  id             String          @id @default(uuid())
+  roomId         String
+  displayName    String
+  sessionToken   String          @unique
+  role           ParticipantRole @default(VOTER)
+  connected      Boolean         @default(false)
+  removedAt      DateTime?
+  joinedAt       DateTime        @default(now())
+  lastActivityAt DateTime        @default(now())
+  room           Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  votes          Vote[]
+  chatMessages   ChatMessage[]
+  reactions      AvatarReaction[]
+
+  @@unique([roomId, displayName])
+  @@index([roomId, role])
+}
+
+model Story {
+  id                 String      @id @default(uuid())
+  roomId             String
+  title              String
+  description        String?
+  acceptanceCriteria String?
+  position           Int
+  status             StoryStatus @default(PENDING)
+  finalEstimate      String?
+  source             String?
+  externalId         String?
+  ownerName          String?
+  workflowStatus     String?
+  taskType           String?
+  originalEstimate   String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  room               Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  rounds             EstimationRound[]
+  votes              Vote[]
+
+  @@unique([roomId, position])
+  @@index([roomId, status])
+}
+
+model EstimationRound {
+  id         String    @id @default(uuid())
+  roomId     String
+  storyId    String
+  number     Int
+  revealedAt DateTime?
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  room       Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  story      Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  votes      Vote[]
+
+  @@unique([storyId, number])
+  @@index([roomId, storyId])
+}
+
+model Vote {
+  id            String          @id @default(uuid())
+  roomId        String
+  storyId       String
+  participantId String
+  roundId       String
+  value         String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  room          Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  story         Story           @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  participant   Participant     @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  round         EstimationRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, storyId, roundId])
+  @@index([roomId, storyId, roundId])
+}
+
+model ChatMessage {
+  id            String      @id @default(uuid())
+  roomId        String
+  participantId String
+  content       String?
+  gifUrl        String?
+  gifTitle      String?
+  createdAt     DateTime    @default(now())
+  room          Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+model AvatarReaction {
+  id            String      @id @default(uuid())
+  roomId        String
+  participantId String
+  emoji         String
+  createdAt     DateTime    @default(now())
+  room          Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@index([participantId, createdAt])
+}
