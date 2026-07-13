@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: sprint
-      POSTGRES_PASSWORD: sprint
-      POSTGRES_DB: sprint
+      POSTGRES_USER: ${DB_USER:-planning}
+      POSTGRES_PASSWORD: ${DB_PASS:-planning}
+      POSTGRES_DB: ${DB_NAME:-planning}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sprint -d sprint"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-planning} -d ${DB_NAME:-planning}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,7 +34,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://sprint:sprint@postgres:5432/sprint
+      DATABASE_URL: ${DATABASE_URL:-postgresql://planning:planning@postgres:5432/planning}
       REDIS_HOST: redis
       CORS_ORIGIN: http://localhost:3000
     ports:

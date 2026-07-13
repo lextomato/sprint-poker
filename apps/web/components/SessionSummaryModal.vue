@@ -7,8 +7,8 @@ defineEmits<{ downloadCsv: []; downloadXlsx: [] }>();
 </script>
 
 <template>
-  <UModal v-model="model">
-    <UCard class="max-h-[85vh] overflow-y-auto">
+  <UModal v-model="model" :ui="{ width: 'w-full sm:max-w-6xl' }">
+    <UCard class="max-h-[88vh] overflow-y-auto">
       <template #header>
         <div class="flex items-center justify-between gap-3">
           <div>
@@ -24,10 +24,10 @@ defineEmits<{ downloadCsv: []; downloadXlsx: [] }>();
 
       <div v-if="summary" class="space-y-4">
         <div class="grid gap-3 sm:grid-cols-4">
-          <UCard><div class="text-xs text-gray-500">Participantes</div><div class="text-2xl font-semibold">{{ summary.totals.participants }}</div></UCard>
-          <UCard><div class="text-xs text-gray-500">Historias</div><div class="text-2xl font-semibold">{{ summary.totals.stories }}</div></UCard>
-          <UCard><div class="text-xs text-gray-500">Estimadas</div><div class="text-2xl font-semibold">{{ summary.totals.estimatedStories }}</div></UCard>
-          <UCard><div class="text-xs text-gray-500">Votos</div><div class="text-2xl font-semibold">{{ summary.totals.votes }}</div></UCard>
+          <UCard :ui="{ body: { padding: 'p-3 sm:p-3' } }"><div class="text-xs text-gray-500">Participantes</div><div class="text-xl font-semibold">{{ summary.totals.participants }}</div></UCard>
+          <UCard :ui="{ body: { padding: 'p-3 sm:p-3' } }"><div class="text-xs text-gray-500">Historias</div><div class="text-xl font-semibold">{{ summary.totals.stories }}</div></UCard>
+          <UCard :ui="{ body: { padding: 'p-3 sm:p-3' } }"><div class="text-xs text-gray-500">Estimadas</div><div class="text-xl font-semibold">{{ summary.totals.estimatedStories }}</div></UCard>
+          <UCard :ui="{ body: { padding: 'p-3 sm:p-3' } }"><div class="text-xs text-gray-500">Votos</div><div class="text-xl font-semibold">{{ summary.totals.votes }}</div></UCard>
         </div>
 
         <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-800">

@@ -143,8 +143,16 @@ body {
   gap: 1rem;
 }
 
+.app-grid--backlog-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr) minmax(240px, 340px);
+}
+
 @media (max-width: 1024px) {
   .app-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-grid--backlog-collapsed {
     grid-template-columns: 1fr;
   }
 }
@@ -240,7 +248,7 @@ body {
   transform: translateX(-50%);
   font-size: 1.25rem;
   filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.2));
-  animation: reactionPop 1100ms ease-out;
+  animation: reactionPop 5000ms ease-out forwards;
   pointer-events: none;
 }
 
@@ -270,13 +278,21 @@ body {
     opacity: 0;
     transform: translate(-50%, 10px) scale(0.65);
   }
-  20% {
+  8% {
     opacity: 1;
     transform: translate(-50%, -4px) scale(1.18);
   }
-  to {
+  18% {
     opacity: 1;
     transform: translate(-50%, 0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(-50%, -2px) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -16px) scale(0.92);
   }
 }
 

@@ -23,6 +23,7 @@ const confirmOpen = ref(false);
 const pendingDeleteStoryId = ref<string | null>(null);
 const finalEstimate = ref<string | undefined>(undefined);
 const backlogOpen = ref(false);
+const backlogCollapsed = ref(false);
 const participantsOpen = ref(false);
 const chatOpen = ref(false);
 const summaryOpen = ref(false);
@@ -33,6 +34,8 @@ const state = computed(() => roomStore.state);
 const canManage = computed(() => participantStore.isModerator);
 const activeStory = computed(() => roomStore.activeStory);
 const isRoomClosed = computed(() => state.value?.room.status === "CLOSED");
+const showRoundResults = computed(() => roomStore.isRevealed || isRoomClosed.value);
+const showVotingArea = computed(() => Boolean(activeStory.value) && !showRoundResults.value);
 const revealedVotes = computed(() => ((state.value?.votes ?? []).filter((vote): vote is RevealedVoteView => "value" in vote) as RevealedVoteView[]));
 const { showApiError } = useApiErrors();
 
@@ -184,28 +187,34 @@ async function reopenSession() {
         <UButton icon="i-lucide-list" color="gray" variant="soft" @click="backlogOpen = true">Backlog</UButton>
         <UButton icon="i-lucide-users" color="gray" variant="soft" @click="participantsOpen = true">Participantes</UButton>
         <UButton icon="i-lucide-messages-square" color="gray" variant="soft" @click="chatOpen = true">Chat</UButton>
+        <RevealControls :can-manage="canManage" :is-voting="roomStore.isVoting" :is-revealed="roomStore.isRevealed" :has-active-story="Boolean(activeStory)" @reveal="voting.revealRound" @restart="voting.restartRound" />
         <UButton icon="i-lucide-file-chart-column" color="gray" variant="soft" @click="openSummary">Resumen</UButton>
       </div>
 
-      <div class="app-grid">
-        <StoryBacklog class="hidden lg:block" :stories="storiesStore.stories" :active-story-id="state.room.activeStoryId" :can-manage="canManage" @add="openAddStory" @import="importStories" @activate="stories.activateStory" @edit="openEditStory" @delete="askDelete" @skip="stories.skipStory" @reorder="stories.reorderStories" />
+      <div class="app-grid" :class="{ 'app-grid--backlog-collapsed': backlogCollapsed }">
+        <div class="hidden lg:block">
+          <div v-if="backlogCollapsed" class="flex h-full min-h-72 flex-col items-center gap-3 rounded-lg border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
+            <UButton icon="i-lucide-panel-left-open" color="gray" variant="soft" square aria-label="Mostrar backlog" @click="backlogCollapsed = false" />
+            <div class="mt-1 flex flex-1 items-center justify-center">
+              <span class="[writing-mode:vertical-rl] text-xs font-semibold uppercase tracking-wide text-gray-500">Backlog</span>
+            </div>
+            <UBadge color="gray" variant="subtle">{{ storiesStore.stories.length }}</UBadge>
+          </div>
+          <StoryBacklog v-else :stories="storiesStore.stories" :active-story-id="state.room.activeStoryId" :can-manage="canManage" collapsible @collapse="backlogCollapsed = true" @add="openAddStory" @import="importStories" @activate="stories.activateStory" @edit="openEditStory" @delete="askDelete" @skip="stories.skipStory" @reorder="stories.reorderStories" />
+        </div>
 
         <div class="space-y-4">
-          <div class="flex flex-wrap justify-end gap-2">
+          <div class="hidden flex-wrap justify-end gap-2 lg:flex">
+            <RevealControls :can-manage="canManage" :is-voting="roomStore.isVoting" :is-revealed="roomStore.isRevealed" :has-active-story="Boolean(activeStory)" @reveal="voting.revealRound" @restart="voting.restartRound" />
             <UButton icon="i-lucide-file-chart-column" color="gray" variant="soft" @click="openSummary">Ver resumen</UButton>
             <UButton v-if="canManage && isRoomClosed" icon="i-lucide-unlock" color="amber" variant="soft" @click="reopenConfirmOpen = true">Reabrir sesión</UButton>
             <UButton v-if="canManage" icon="i-lucide-lock" color="red" variant="soft" :disabled="isRoomClosed" @click="closeSession">Terminar sesión</UButton>
           </div>
           <ActiveStoryCard :story="activeStory" :round="state.room.currentRound" :status="state.room.status" />
           <PlanningTable :participants="state.participants" :moderator-id="state.room.moderatorParticipantId" :votes="revealedVotes" :reactions="state.reactions" :status="state.room.status" />
-          <VoteProgress :participants="state.participants" />
-          <VotingDeck v-if="activeStory" :deck="state.room.deck" :selected="votingStore.selectedValue" :disabled="!participantStore.canVote || !roomStore.isVoting" @select="voting.submitVote(activeStory.id, $event)" />
-          <RevealControls :can-manage="canManage" :is-voting="roomStore.isVoting" :is-revealed="roomStore.isRevealed" :has-active-story="Boolean(activeStory)" @reveal="voting.revealRound" @restart="voting.restartRound" />
-          <VoteResults v-if="roomStore.isRevealed" :votes="revealedVotes" :statistics="votingStore.statistics" />
-          <div v-if="canManage && roomStore.isRevealed && activeStory" class="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white/90 p-4 dark:border-gray-800 dark:bg-gray-900/80">
-            <FinalEstimateSelector v-model="finalEstimate" :deck="state.room.deck" />
-            <UButton icon="i-lucide-save" color="teal" :disabled="!finalEstimate" @click="finalize">Guardar final</UButton>
-          </div>
+          <VoteProgress v-if="showVotingArea" :participants="state.participants" />
+          <VotingDeck v-if="showVotingArea && activeStory" :deck="state.room.deck" :selected="votingStore.selectedValue" :disabled="!participantStore.canVote || !roomStore.isVoting" @select="voting.submitVote(activeStory.id, $event)" />
+          <VoteResults v-if="showRoundResults" v-model:final-estimate="finalEstimate" :votes="revealedVotes" :statistics="votingStore.statistics" :can-finalize="canManage && roomStore.isRevealed && Boolean(activeStory)" :deck="state.room.deck" :save-disabled="!finalEstimate" @finalize="finalize" />
         </div>
 
         <div class="hidden space-y-4 lg:block">

@@ -11,7 +11,7 @@ defineEmits<{ changeRole: [string, "VOTER" | "OBSERVER"]; remove: [string] }>();
       <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Participantes</h2>
       <UBadge color="gray" variant="subtle">{{ participants.length }}</UBadge>
     </div>
-    <ul class="space-y-1">
+    <ul class="max-h-[calc(50vh-6rem)] min-h-0 space-y-1 overflow-y-auto pr-1">
       <ParticipantItem v-for="participant in participants" :key="participant.id" :participant="participant" :moderator-id="moderatorId" :can-manage="canManage" :current-participant-id="currentParticipantId" @change-role="(id, role) => $emit('changeRole', id, role)" @remove="$emit('remove', $event)" />
     </ul>
   </aside>

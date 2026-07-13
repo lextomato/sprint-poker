@@ -1,6 +1,16 @@
 export default defineNuxtConfig({
   compatibilityDate: "2026-07-10",
   devtools: { enabled: true },
+  app: {
+    head: {
+      title: "Sprint Poker",
+      meta: [{ name: "theme-color", content: "#0f172a" }],
+      link: [
+        { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+        { rel: "apple-touch-icon", href: "/brand/sprint-poker-mark.svg" }
+      ]
+    }
+  },
   modules: ["@nuxt/ui", "@pinia/nuxt"],
   css: ["~/assets/css/main.css"],
   typescript: {

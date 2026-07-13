@@ -3,11 +3,28 @@ import type { AvatarReactionView, ParticipantView, RevealedVoteView, RoomStatus 
 
 const props = defineProps<{ participants: ParticipantView[]; moderatorId: string | null; votes: RevealedVoteView[]; reactions: AvatarReactionView[]; status: RoomStatus }>();
 
+const now = ref(Date.now());
+let reactionTimer: ReturnType<typeof setInterval> | null = null;
 const voters = computed(() => props.participants.filter((participant) => participant.role !== "OBSERVER"));
 const observers = computed(() => props.participants.filter((participant) => participant.role === "OBSERVER"));
 const revealed = computed(() => props.status === "REVEALED" || props.status === "CLOSED");
 const voteByParticipantId = computed(() => new Map(props.votes.map((vote) => [vote.participantId, vote.value])));
-const latestReactionByParticipantId = computed(() => new Map(props.reactions.map((reaction) => [reaction.participantId, reaction])));
+const latestReactionByParticipantId = computed(() => {
+  const visibleReactions = props.reactions.filter((reaction) => now.value - new Date(reaction.createdAt).getTime() <= 5000);
+  return new Map(visibleReactions.map((reaction) => [reaction.participantId, reaction]));
+});
+
+onMounted(() => {
+  reactionTimer = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
+});
+
+onBeforeUnmount(() => {
+  if (reactionTimer) {
+    clearInterval(reactionTimer);
+  }
+});
 
 function initials(name: string) {
   return name
@@ -39,14 +56,16 @@ function latestReaction(participantId: string) {
 <template>
   <section class="rounded-lg border border-gray-200 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Mesa</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Mesa</h2>
+        <UBadge color="gray" variant="subtle">{{ voters.filter((participant) => participant.hasVoted).length }} / {{ voters.length }}</UBadge>
+      </div>
       <UBadge color="gray" variant="subtle">{{ voters.length }} votantes</UBadge>
     </div>
-    <div class="relative mx-auto aspect-[18/7] max-h-[260px] min-h-[180px] w-full">
+    <div class="relative mx-auto aspect-[18/6] max-h-[210px] min-h-[150px] w-full">
       <div class="absolute left-1/2 top-1/2 flex h-[48%] w-[58%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[44%] border border-teal-200 bg-teal-50 text-center shadow-inner dark:border-teal-900 dark:bg-teal-950/40">
         <div>
           <div class="text-xs uppercase tracking-wide text-gray-500">Planning Poker</div>
-          <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ voters.filter((participant) => participant.hasVoted).length }} / {{ voters.length }}</div>
         </div>
       </div>
 
