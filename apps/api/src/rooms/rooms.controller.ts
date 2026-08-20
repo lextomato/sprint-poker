@@ -5,11 +5,15 @@ import type { Response } from "express";
 import { AppError, ErrorCode } from "../common/app-error";
 import { CreateRoomDto, CreateStoryDto, FinalizeStoryDto, JoinRoomDto, ReconnectDto, SessionDto, UpdateParticipantRoleDto, UpdateStoryDto } from "./dto";
 import { RoomsService } from "./rooms.service";
+import { AuthService } from "../auth/auth.service";
 
 @ApiTags("rooms")
 @Controller("rooms")
 export class RoomsController {
-  constructor(private readonly rooms: RoomsService) {}
+  constructor(
+    private readonly rooms: RoomsService,
+    private readonly auth: AuthService
+  ) {}
 
   @Post()
   async createRoom(@Body() dto: CreateRoomDto, @Res({ passthrough: true }) response: Response) {
@@ -24,8 +28,9 @@ export class RoomsController {
   }
 
   @Post(":roomCode/join")
-  async joinRoom(@Param("roomCode") roomCode: string, @Body() dto: JoinRoomDto, @Res({ passthrough: true }) response: Response) {
-    const result = await this.rooms.joinRoom(roomCode, dto);
+  async joinRoom(@Param("roomCode") roomCode: string, @Body() dto: JoinRoomDto, @Headers("x-auth-token") authToken: string | undefined, @Res({ passthrough: true }) response: Response) {
+    const user = await this.auth.resolveToken(authToken);
+    const result = await this.rooms.joinRoom(roomCode, dto, user?.id);
     this.setSessionCookie(response, result.roomCode, result.sessionToken);
     return result;
   }

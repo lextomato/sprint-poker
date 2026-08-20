@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useEventListener } from "@vueuse/core";
-import type { RevealedVoteView, StoryView } from "@planning/shared";
+import { RoomType, type RevealedVoteView, type StoryView } from "@planning/shared";
+import { useDeckPreferences } from "~/composables/useDeckPreferences";
 
 const route = useRoute();
 const router = useRouter();
@@ -16,6 +17,7 @@ const voting = useVoting(roomCode.value);
 const participants = useParticipants(roomCode.value);
 const sessionSummary = useSessionSummary(roomCode.value);
 const lifecycle = useRoomLifecycle(roomCode.value);
+const deckPreferences = useDeckPreferences();
 
 const editorOpen = ref(false);
 const editingStory = ref<StoryView | null>(null);
@@ -28,6 +30,7 @@ const participantsOpen = ref(false);
 const chatOpen = ref(false);
 const summaryOpen = ref(false);
 const reopenConfirmOpen = ref(false);
+const deckSettingsOpen = ref(false);
 const summary = ref<import("@planning/shared").SessionSummaryView | null>(null);
 
 const state = computed(() => roomStore.state);
@@ -37,20 +40,29 @@ const isRoomClosed = computed(() => state.value?.room.status === "CLOSED");
 const showRoundResults = computed(() => roomStore.isRevealed || isRoomClosed.value);
 const showVotingArea = computed(() => Boolean(activeStory.value) && !showRoundResults.value);
 const revealedVotes = computed(() => ((state.value?.votes ?? []).filter((vote): vote is RevealedVoteView => "value" in vote) as RevealedVoteView[]));
+const selectedDeck = computed(() => deckPreferences.deck.value);
 const { showApiError } = useApiErrors();
 
 onMounted(async () => {
+  deckPreferences.load();
   const ok = await roomSocket.sync();
   if (!ok) {
     await router.push(`/join/${roomCode.value}`);
   }
 });
 
+watch(
+  () => state.value?.room.type,
+  (type) => {
+    if (type === RoomType.RETROSPECTIVE) void router.replace(`/retrospectives/${roomCode.value}`);
+  }
+);
+
 useEventListener(window, "keydown", (event) => {
   const active = activeStory.value;
   if (!active || !participantStore.canVote || !roomStore.isVoting) return;
   const index = Number(event.key) - 1;
-  const card = state.value?.room.deck[index];
+  const card = selectedDeck.value[index];
   if (card) {
     void voting.submitVote(active.id, card);
   }
@@ -187,6 +199,7 @@ async function reopenSession() {
         <UButton icon="i-lucide-list" color="gray" variant="soft" @click="backlogOpen = true">Backlog</UButton>
         <UButton icon="i-lucide-users" color="gray" variant="soft" @click="participantsOpen = true">Participantes</UButton>
         <UButton icon="i-lucide-messages-square" color="gray" variant="soft" @click="chatOpen = true">Chat</UButton>
+        <UButton icon="i-lucide-settings-2" color="gray" variant="soft" aria-label="Configurar baraja" @click="deckSettingsOpen = true" />
         <RevealControls :can-manage="canManage" :is-voting="roomStore.isVoting" :is-revealed="roomStore.isRevealed" :has-active-story="Boolean(activeStory)" @reveal="voting.revealRound" @restart="voting.restartRound" />
         <UButton icon="i-lucide-file-chart-column" color="gray" variant="soft" @click="openSummary">Resumen</UButton>
       </div>
@@ -206,6 +219,7 @@ async function reopenSession() {
         <div class="space-y-4">
           <div class="hidden flex-wrap justify-end gap-2 lg:flex">
             <RevealControls :can-manage="canManage" :is-voting="roomStore.isVoting" :is-revealed="roomStore.isRevealed" :has-active-story="Boolean(activeStory)" @reveal="voting.revealRound" @restart="voting.restartRound" />
+            <UButton icon="i-lucide-settings-2" color="gray" variant="soft" @click="deckSettingsOpen = true">Baraja</UButton>
             <UButton icon="i-lucide-file-chart-column" color="gray" variant="soft" @click="openSummary">Ver resumen</UButton>
             <UButton v-if="canManage && isRoomClosed" icon="i-lucide-unlock" color="amber" variant="soft" @click="reopenConfirmOpen = true">Reabrir sesión</UButton>
             <UButton v-if="canManage" icon="i-lucide-lock" color="red" variant="soft" :disabled="isRoomClosed" @click="closeSession">Terminar sesión</UButton>
@@ -213,8 +227,8 @@ async function reopenSession() {
           <ActiveStoryCard :story="activeStory" :round="state.room.currentRound" :status="state.room.status" />
           <PlanningTable :participants="state.participants" :moderator-id="state.room.moderatorParticipantId" :votes="revealedVotes" :reactions="state.reactions" :status="state.room.status" />
           <VoteProgress v-if="showVotingArea" :participants="state.participants" />
-          <VotingDeck v-if="showVotingArea && activeStory" :deck="state.room.deck" :selected="votingStore.selectedValue" :disabled="!participantStore.canVote || !roomStore.isVoting" @select="voting.submitVote(activeStory.id, $event)" />
-          <VoteResults v-if="showRoundResults" v-model:final-estimate="finalEstimate" :votes="revealedVotes" :statistics="votingStore.statistics" :can-finalize="canManage && roomStore.isRevealed && Boolean(activeStory)" :deck="state.room.deck" :save-disabled="!finalEstimate" @finalize="finalize" />
+          <VotingDeck v-if="showVotingArea && activeStory" :deck="selectedDeck" :selected="votingStore.selectedValue" :disabled="!participantStore.canVote || !roomStore.isVoting" @select="voting.submitVote(activeStory.id, $event)" />
+          <VoteResults v-if="showRoundResults" v-model:final-estimate="finalEstimate" :votes="revealedVotes" :statistics="votingStore.statistics" :can-finalize="canManage && roomStore.isRevealed && Boolean(activeStory)" :deck="selectedDeck" :save-disabled="!finalEstimate" @finalize="finalize" />
         </div>
 
         <div class="hidden space-y-4 lg:block">
@@ -242,5 +256,6 @@ async function reopenSession() {
     <ConfirmDialog v-model="confirmOpen" title="Eliminar historia" body="Esta accion no se puede deshacer." @confirm="confirmDelete" />
     <ConfirmDialog v-model="reopenConfirmOpen" title="Reabrir sesión" body="La sala volverá a quedar disponible para continuar el planning. Las HDU estimadas y el historial se conservan." @confirm="reopenSession" />
     <SessionSummaryModal v-model="summaryOpen" :summary="summary" @download-csv="summary && sessionSummary.downloadCsv(summary)" @download-xlsx="summary && sessionSummary.downloadXlsx(summary)" />
+    <DeckSettingsModal v-model="deckSettingsOpen" :deck="selectedDeck" @save="deckPreferences.save" />
   </main>
 </template>

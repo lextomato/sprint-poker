@@ -1,25 +1,41 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ParticipantRole as PrismaParticipantRole, RoomStatus as PrismaRoomStatus, StoryStatus as PrismaStoryStatus } from "@prisma/client";
+import {
+  DailyMode as PrismaDailyMode,
+  DailyStatus as PrismaDailyStatus,
+  ParticipantRole as PrismaParticipantRole,
+  RoomStatus as PrismaRoomStatus,
+  RoomType as PrismaRoomType,
+  StoryStatus as PrismaStoryStatus,
+  TeamAvailability as PrismaTeamAvailability,
+  TeamZone as PrismaTeamZone
+} from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { read, utils, write } from "xlsx";
 import {
   FIBONACCI_DECK,
   AvatarReactionView,
   ChatMessageView,
+  DailyMode,
+  DailySessionView,
   ParticipantRole,
   RevealedVoteView,
   RoomStateView,
   RoomStatus,
   SessionSummaryView,
   StoryStatus,
+  TeamAvailability,
+  TeamAvatarId,
+  TeamRoomView,
+  TeamPositionEvent,
+  TeamZone,
   VoteStatistics,
   calculateVoteStatistics
 } from "@planning/shared";
 import { PrismaService } from "../database/prisma.service";
 import { AppError, ErrorCode } from "../common/app-error";
 import { sanitizeOptionalText, sanitizeText } from "../common/sanitize";
-import type { CreateRoomDto, CreateStoryDto, JoinRoomDto, ReorderStoriesDto, UpdateStoryDto } from "./dto";
+import type { CreateRetrospectiveDto, CreateRoomDto, CreateStoryDto, CreateTeamDto, JoinRoomDto, ReorderStoriesDto, UpdateStoryDto } from "./dto";
 
 interface ImportedStoryRow {
   title: string;
@@ -105,15 +121,107 @@ export class RoomsService {
     return { roomCode: code, sessionToken, participantId: moderator.id, state: await this.getRoomState(code, moderator.id) };
   }
 
-  async getPublicRoom(roomCode: string) {
-    const room = await this.findRoom(roomCode);
-    return { code: room.code, name: room.name, status: room.status, activeStoryId: room.activeStoryId };
+  async createRetrospective(dto: CreateRetrospectiveDto) {
+    const code = await this.generateRoomCode();
+    const sessionToken = this.generateSessionToken();
+    const room = await this.prisma.room.create({
+      data: {
+        code,
+        name: sanitizeText(dto.roomName),
+        type: PrismaRoomType.RETROSPECTIVE,
+        participants: {
+          create: {
+            displayName: sanitizeText(dto.participantName),
+            role: PrismaParticipantRole.MODERATOR,
+            sessionToken,
+            connected: true
+          }
+        },
+        retroColumns: {
+          create: [
+            { title: "Salio bien", color: "emerald", position: 1 },
+            { title: "Podemos mejorar", color: "rose", position: 2 },
+            { title: "Ideas", color: "amber", position: 3 }
+          ]
+        }
+      },
+      include: { participants: true }
+    });
+    const moderator = room.participants[0];
+    await this.prisma.room.update({ where: { id: room.id }, data: { moderatorParticipantId: moderator.id } });
+    this.logger.log({ event: "retrospective.created", roomCode: code, participantId: moderator.id });
+    return { roomCode: code, sessionToken, participantId: moderator.id, state: await this.getRoomState(code, moderator.id) };
   }
 
-  async joinRoom(roomCode: string, dto: JoinRoomDto) {
+  async createTeam(dto: CreateTeamDto, userId?: string) {
+    const code = await this.generateRoomCode();
+    const sessionToken = this.generateSessionToken();
+    const room = await this.prisma.room.create({
+      data: {
+        code,
+        name: sanitizeText(dto.roomName),
+        type: PrismaRoomType.TEAM,
+        ownerUserId: userId ?? null,
+        participants: {
+          create: {
+            displayName: sanitizeText(dto.participantName),
+            role: PrismaParticipantRole.MODERATOR,
+            sessionToken,
+            connected: true,
+            userId: userId ?? null
+          }
+        },
+        dailySessions: {
+          create: {
+            date: this.dateValue(this.todayKey()),
+            mode: dto.dailyMode as PrismaDailyMode,
+            turnDurationSeconds: dto.turnDurationSeconds
+          }
+        }
+      },
+      include: { participants: true }
+    });
+    const moderator = room.participants[0];
+    await this.prisma.room.update({ where: { id: room.id }, data: { moderatorParticipantId: moderator.id } });
+    this.logger.log({ event: "team.created", roomCode: code, participantId: moderator.id, registered: Boolean(userId) });
+    return { roomCode: code, sessionToken, participantId: moderator.id, state: await this.getRoomState(code, moderator.id) };
+  }
+
+  async getUserTeams(userId: string) {
+    const rooms = await this.prisma.room.findMany({
+      where: { type: PrismaRoomType.TEAM, OR: [{ ownerUserId: userId }, { participants: { some: { userId, removedAt: null } } }] },
+      orderBy: { lastActivityAt: "desc" }
+    });
+    return rooms.map((room) => ({ code: room.code, name: room.name, status: room.status, lastActivityAt: room.lastActivityAt.toISOString() }));
+  }
+
+  async accessTeam(roomCode: string, userId: string) {
+    const room = await this.findRoom(roomCode);
+    if (room.type !== PrismaRoomType.TEAM) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La sala no pertenece a un equipo.");
+    const participant = await this.prisma.participant.findFirst({ where: { roomId: room.id, userId, removedAt: null } });
+    if (!participant) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Tu cuenta no pertenece a este equipo.");
+    const sessionToken = this.generateSessionToken();
+    await this.prisma.participant.update({ where: { id: participant.id }, data: { sessionToken, connected: true, lastActivityAt: new Date() } });
+    return { roomCode: room.code, sessionToken, participantId: participant.id, state: await this.getRoomState(room.code, participant.id) };
+  }
+
+  async getPublicRoom(roomCode: string) {
+    const room = await this.findRoom(roomCode);
+    return { code: room.code, name: room.name, type: room.type, status: room.status, activeStoryId: room.activeStoryId };
+  }
+
+  async joinRoom(roomCode: string, dto: JoinRoomDto, userId?: string) {
     const room = await this.findRoom(roomCode);
     this.ensureRoomOpen(room.status);
     const displayName = sanitizeText(dto.participantName);
+    if (userId) {
+      const linked = await this.prisma.participant.findFirst({ where: { roomId: room.id, userId, removedAt: null } });
+      if (linked) {
+        const sessionToken = this.generateSessionToken();
+        await this.prisma.participant.update({ where: { id: linked.id }, data: { sessionToken, connected: true, lastActivityAt: new Date() } });
+        return { roomCode, sessionToken, participantId: linked.id, state: await this.getRoomState(roomCode, linked.id) };
+      }
+    }
     const duplicate = await this.prisma.participant.findFirst({ where: { roomId: room.id, displayName, removedAt: null } });
     if (duplicate) {
       throw new AppError(ErrorCode.DUPLICATE_PARTICIPANT_NAME, "Ya existe un participante con ese nombre en la sala.");
@@ -125,7 +233,8 @@ export class RoomsService {
         displayName,
         sessionToken,
         role: this.toPrismaRole(dto.role ?? ParticipantRole.VOTER),
-        connected: true
+        connected: true,
+        userId: userId ?? null
       }
     });
     await this.touchRoom(room.id);
@@ -180,12 +289,34 @@ export class RoomsService {
       return revealValues ? { ...base, value: vote.value } : base;
     });
     const history = await this.getHistory(roomCode);
+    const retroColumns = room.type === PrismaRoomType.RETROSPECTIVE
+      ? await this.prisma.retroColumn.findMany({ where: { roomId: room.id }, orderBy: { position: "asc" } })
+      : [];
+    const retroCards = room.type === PrismaRoomType.RETROSPECTIVE
+      ? await this.prisma.retroCard.findMany({
+          where: { roomId: room.id },
+          include: {
+            participant: true,
+            votes: true,
+            comments: { include: { participant: true }, orderBy: { createdAt: "asc" } },
+            reactions: true
+          },
+          orderBy: [{ columnId: "asc" }, { position: "asc" }, { createdAt: "asc" }]
+        })
+      : [];
+    const retroActions = room.type === PrismaRoomType.RETROSPECTIVE
+      ? await this.prisma.retroAction.findMany({ where: { roomId: room.id }, include: { createdBy: true }, orderBy: { createdAt: "asc" } })
+      : [];
+    const team = room.type === PrismaRoomType.TEAM
+      ? await this.getTeamView(room.id, participants, viewerParticipantId, room.moderatorParticipantId)
+      : null;
     const me = viewerParticipantId ? participants.find((participant) => participant.id === viewerParticipantId) : undefined;
     return {
       room: {
         id: room.id,
         code: room.code,
         name: room.name,
+        type: room.type,
         status: room.status as RoomStatus,
         deck: [...FIBONACCI_DECK],
         activeStoryId: room.activeStoryId,
@@ -201,7 +332,14 @@ export class RoomsService {
             connected: me.connected,
             hasVoted: votes.some((vote) => vote.participantId === me.id),
             joinedAt: me.joinedAt.toISOString(),
-            lastActivityAt: me.lastActivityAt.toISOString()
+            lastActivityAt: me.lastActivityAt.toISOString(),
+            availability: me.availability as TeamAvailability,
+            zone: me.zone as TeamZone,
+            activity: me.activity,
+            avatarId: me.avatarId as TeamAvatarId | null,
+            userId: me.userId,
+            positionX: me.positionX,
+            positionY: me.positionY
           }
         : undefined,
       participants: participants.map((participant) => ({
@@ -211,7 +349,14 @@ export class RoomsService {
         connected: participant.connected,
         hasVoted: votes.some((vote) => vote.participantId === participant.id),
         joinedAt: participant.joinedAt.toISOString(),
-        lastActivityAt: participant.lastActivityAt.toISOString()
+        lastActivityAt: participant.lastActivityAt.toISOString(),
+        availability: participant.availability as TeamAvailability,
+        zone: participant.zone as TeamZone,
+        activity: participant.activity,
+        avatarId: participant.avatarId as TeamAvatarId | null,
+        userId: participant.userId,
+        positionX: participant.positionX,
+        positionY: participant.positionY
       })),
       stories: stories.map((story) => ({
         id: story.id,
@@ -253,7 +398,49 @@ export class RoomsService {
           createdAt: reaction.createdAt.toISOString()
         })),
       statistics: revealValues ? calculateVoteStatistics(votes.map((vote) => vote.value)) : null,
-      history
+      history,
+      retrospective: room.type === PrismaRoomType.RETROSPECTIVE
+        ? {
+            columns: retroColumns.map((column) => ({ id: column.id, title: column.title, color: column.color, position: column.position })),
+            cards: retroCards.map((card) => ({
+              id: card.id,
+              columnId: card.columnId,
+              participantId: card.anonymous ? null : card.participantId,
+              authorName: card.anonymous ? null : card.participant?.displayName ?? null,
+              content: card.content,
+              anonymous: card.anonymous,
+              position: card.position,
+              voteCount: card.votes.length,
+              voterIds: card.votes.map((vote) => vote.participantId),
+              votedByMe: viewerParticipantId ? card.votes.some((vote) => vote.participantId === viewerParticipantId) : false,
+              canEdit: Boolean(viewerParticipantId && (card.participantId === viewerParticipantId || room.moderatorParticipantId === viewerParticipantId)),
+              comments: card.comments.map((comment) => ({
+                id: comment.id,
+                participantId: comment.participantId,
+                participantName: comment.participant.displayName,
+                content: comment.content,
+                createdAt: comment.createdAt.toISOString()
+              })),
+              reactions: Array.from(new Set(card.reactions.map((reaction) => reaction.emoji))).map((emoji) => ({
+                emoji,
+                count: card.reactions.filter((reaction) => reaction.emoji === emoji).length,
+                participantIds: card.reactions.filter((reaction) => reaction.emoji === emoji).map((reaction) => reaction.participantId)
+              })),
+              createdAt: card.createdAt.toISOString()
+            })),
+            actions: retroActions.map((action) => ({
+              id: action.id,
+              cardId: action.cardId,
+              content: action.content,
+              assigneeName: action.assigneeName,
+              completed: action.completed,
+              createdByName: action.createdBy.displayName,
+              createdAt: action.createdAt.toISOString()
+            }))
+          }
+        : null,
+      team,
+      daily: team?.sessions[0] ?? null
     };
   }
 
@@ -441,14 +628,15 @@ export class RoomsService {
     if (room.status !== PrismaRoomStatus.VOTING || !room.activeStoryId) {
       throw new AppError(ErrorCode.VOTING_NOT_ACTIVE, "La votacion no esta activa.");
     }
-    if (!FIBONACCI_DECK.includes(value as (typeof FIBONACCI_DECK)[number])) {
-      throw new AppError(ErrorCode.INVALID_VOTE, "La carta seleccionada no pertenece a la baraja activa.");
+    const normalizedValue = value.trim();
+    if (!normalizedValue || normalizedValue.length > 16) {
+      throw new AppError(ErrorCode.INVALID_VOTE, "La carta seleccionada no es valida.");
     }
     const round = await this.getActiveRoundOrThrow(room.id, room.activeStoryId, room.currentRound);
     await this.prisma.vote.upsert({
       where: { participantId_storyId_roundId: { participantId: participant.id, storyId: room.activeStoryId, roundId: round.id } },
-      create: { roomId: room.id, storyId: room.activeStoryId, participantId: participant.id, roundId: round.id, value },
-      update: { value }
+      create: { roomId: room.id, storyId: room.activeStoryId, participantId: participant.id, roundId: round.id, value: normalizedValue },
+      update: { value: normalizedValue }
     });
     await this.touch(room.id, participant.id);
     return this.getRoomState(roomCode, participant.id);
@@ -607,7 +795,14 @@ export class RoomsService {
         connected: participant.connected,
         hasVoted: allVotes.some((vote) => vote.participantId === participant.id),
         joinedAt: participant.joinedAt.toISOString(),
-        lastActivityAt: participant.lastActivityAt.toISOString()
+        lastActivityAt: participant.lastActivityAt.toISOString(),
+        availability: participant.availability as TeamAvailability,
+        zone: participant.zone as TeamZone,
+        activity: participant.activity,
+        avatarId: participant.avatarId as TeamAvatarId | null,
+        userId: participant.userId,
+        positionX: participant.positionX,
+        positionY: participant.positionY
       })),
       stories: stories.map((story) => ({
         id: story.id,
@@ -697,12 +892,458 @@ export class RoomsService {
     });
   }
 
+  async createRetroCard(roomCode: string, sessionToken: string, dto: { columnId: string; content: string; anonymous: boolean }) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const column = await this.prisma.retroColumn.findFirst({ where: { id: dto.columnId, roomId: room.id } });
+    if (!column) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La columna no pertenece a esta retrospectiva.");
+    const max = await this.prisma.retroCard.aggregate({ where: { columnId: column.id }, _max: { position: true } });
+    await this.prisma.retroCard.create({
+      data: {
+        roomId: room.id,
+        columnId: column.id,
+        participantId: participant.id,
+        content: sanitizeText(dto.content),
+        anonymous: dto.anonymous,
+        position: (max._max.position ?? 0) + 1
+      }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async updateRetroCard(roomCode: string, sessionToken: string, cardId: string, content: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const card = await this.requireRetroCard(room.id, cardId);
+    if (card.participantId !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede editar esta tarjeta.");
+    }
+    await this.prisma.retroCard.update({ where: { id: card.id }, data: { content: sanitizeText(content) } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async deleteRetroCard(roomCode: string, sessionToken: string, cardId: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const card = await this.requireRetroCard(room.id, cardId);
+    if (card.participantId !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede eliminar esta tarjeta.");
+    }
+    await this.prisma.retroCard.delete({ where: { id: card.id } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async moveRetroCard(roomCode: string, sessionToken: string, cardId: string, columnId: string, position: number) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const card = await this.requireRetroCard(room.id, cardId);
+    const column = await this.prisma.retroColumn.findFirst({ where: { id: columnId, roomId: room.id } });
+    if (!column) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La columna no pertenece a esta retrospectiva.");
+    if (card.participantId !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede mover esta tarjeta.");
+    }
+    await this.prisma.retroCard.update({ where: { id: card.id }, data: { columnId, position } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async toggleRetroVote(roomCode: string, sessionToken: string, cardId: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    await this.requireRetroCard(room.id, cardId);
+    const existing = await this.prisma.retroVote.findUnique({ where: { cardId_participantId: { cardId, participantId: participant.id } } });
+    if (existing) {
+      await this.prisma.retroVote.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.retroVote.create({ data: { cardId, participantId: participant.id } });
+    }
+    await this.touch(room.id, participant.id);
+  }
+
+  async createRetroComment(roomCode: string, sessionToken: string, cardId: string, content: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    await this.requireRetroCard(room.id, cardId);
+    await this.prisma.retroComment.create({
+      data: { cardId, participantId: participant.id, content: sanitizeText(content) }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async deleteRetroComment(roomCode: string, sessionToken: string, commentId: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const comment = await this.prisma.retroComment.findFirst({ where: { id: commentId, card: { roomId: room.id } } });
+    if (!comment) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "El comentario no pertenece a esta retrospectiva.");
+    if (comment.participantId !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede eliminar este comentario.");
+    }
+    await this.prisma.retroComment.delete({ where: { id: comment.id } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async toggleRetroReaction(roomCode: string, sessionToken: string, cardId: string, emoji: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    await this.requireRetroCard(room.id, cardId);
+    const existing = await this.prisma.retroReaction.findUnique({
+      where: { cardId_participantId_emoji: { cardId, participantId: participant.id, emoji } }
+    });
+    if (existing) {
+      await this.prisma.retroReaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.retroReaction.create({ data: { cardId, participantId: participant.id, emoji } });
+    }
+    await this.touch(room.id, participant.id);
+  }
+
+  async createRetroAction(roomCode: string, sessionToken: string, dto: { content: string; assigneeName?: string | null; cardId?: string | null }) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    if (dto.cardId) await this.requireRetroCard(room.id, dto.cardId);
+    await this.prisma.retroAction.create({
+      data: {
+        roomId: room.id,
+        cardId: dto.cardId ?? null,
+        createdById: participant.id,
+        content: sanitizeText(dto.content),
+        assigneeName: sanitizeOptionalText(dto.assigneeName)
+      }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async toggleRetroAction(roomCode: string, sessionToken: string, actionId: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const action = await this.prisma.retroAction.findFirst({ where: { id: actionId, roomId: room.id } });
+    if (!action) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La accion no pertenece a esta retrospectiva.");
+    await this.prisma.retroAction.update({ where: { id: action.id }, data: { completed: !action.completed } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async deleteRetroAction(roomCode: string, sessionToken: string, actionId: string) {
+    const { room, participant } = await this.requireRetroParticipant(roomCode, sessionToken);
+    const action = await this.prisma.retroAction.findFirst({ where: { id: actionId, roomId: room.id } });
+    if (!action) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La accion no pertenece a esta retrospectiva.");
+    if (action.createdById !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede eliminar esta accion.");
+    }
+    await this.prisma.retroAction.delete({ where: { id: action.id } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async updateTeamPresence(roomCode: string, sessionToken: string, dto: { availability: TeamAvailability; zone: TeamZone; activity?: string | null; avatarId?: TeamAvatarId }) {
+    const { room, participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    await this.prisma.participant.update({
+      where: { id: participant.id },
+      data: {
+        availability: dto.availability as PrismaTeamAvailability,
+        zone: dto.zone as PrismaTeamZone,
+        activity: sanitizeOptionalText(dto.activity)?.slice(0, 80) ?? null,
+        avatarId: dto.avatarId,
+        connected: true,
+        lastActivityAt: new Date()
+      }
+    });
+    await this.touchRoom(room.id);
+  }
+
+  async updateTeamPosition(roomCode: string, sessionToken: string, dto: { x: number; y: number; zone: TeamZone }): Promise<TeamPositionEvent> {
+    const { participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    const updatedAt = new Date();
+    await this.prisma.participant.update({
+      where: { id: participant.id },
+      data: {
+        positionX: dto.x,
+        positionY: dto.y,
+        zone: dto.zone as PrismaTeamZone,
+        connected: true,
+        lastActivityAt: updatedAt
+      }
+    });
+    return { participantId: participant.id, x: dto.x, y: dto.y, zone: dto.zone, updatedAt: updatedAt.toISOString() };
+  }
+
+  async createDailySession(roomCode: string, sessionToken: string, dto: { date: string; mode: DailyMode; turnDurationSeconds: number }) {
+    const { room, participant } = await this.requireTeamModerator(roomCode, sessionToken);
+    await this.prisma.dailySession.upsert({
+      where: { roomId_date: { roomId: room.id, date: this.dateValue(dto.date) } },
+      create: { roomId: room.id, date: this.dateValue(dto.date), mode: dto.mode as PrismaDailyMode, turnDurationSeconds: dto.turnDurationSeconds },
+      update: { mode: dto.mode as PrismaDailyMode, turnDurationSeconds: dto.turnDurationSeconds }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async upsertDailyEntry(
+    roomCode: string,
+    sessionToken: string,
+    dto: { dailyId: string; yesterday: string; today: string; mood?: string | null; blocker?: string | null }
+  ) {
+    const { room, participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    const daily = await this.requireDaily(room.id, dto.dailyId);
+    if (daily.status === PrismaDailyStatus.COMPLETED) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta daily ya esta finalizada.");
+    await this.prisma.dailyEntry.upsert({
+      where: { dailyId_participantId: { dailyId: daily.id, participantId: participant.id } },
+      create: {
+        dailyId: daily.id,
+        participantId: participant.id,
+        yesterday: sanitizeText(dto.yesterday),
+        today: sanitizeText(dto.today),
+        mood: sanitizeOptionalText(dto.mood)?.slice(0, 12) ?? null
+      },
+      update: {
+        yesterday: sanitizeText(dto.yesterday),
+        today: sanitizeText(dto.today),
+        mood: sanitizeOptionalText(dto.mood)?.slice(0, 12) ?? null,
+        submittedAt: new Date()
+      }
+    });
+    const blocker = sanitizeOptionalText(dto.blocker)?.slice(0, 500);
+    if (blocker) {
+      const duplicate = await this.prisma.dailyBlocker.findFirst({ where: { participantId: participant.id, content: blocker, resolvedAt: null } });
+      if (!duplicate) await this.prisma.dailyBlocker.create({ data: { dailyId: daily.id, participantId: participant.id, content: blocker } });
+    }
+    await this.touch(room.id, participant.id);
+  }
+
+  async resolveDailyBlocker(roomCode: string, sessionToken: string, blockerId: string) {
+    const { room, participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    const blocker = await this.prisma.dailyBlocker.findFirst({ where: { id: blockerId, daily: { roomId: room.id } } });
+    if (!blocker) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "El blocker no pertenece a este equipo.");
+    await this.prisma.dailyBlocker.update({ where: { id: blocker.id }, data: { resolvedAt: blocker.resolvedAt ? null : new Date(), resolvedById: blocker.resolvedAt ? null : participant.id } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async createDailyAction(roomCode: string, sessionToken: string, dto: { dailyId: string; content: string; assigneeName?: string | null }) {
+    const { room, participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    const daily = await this.requireDaily(room.id, dto.dailyId);
+    await this.prisma.dailyAction.create({
+      data: { dailyId: daily.id, createdById: participant.id, content: sanitizeText(dto.content), assigneeName: sanitizeOptionalText(dto.assigneeName)?.slice(0, 80) ?? null }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async toggleDailyAction(roomCode: string, sessionToken: string, actionId: string) {
+    const { room, participant } = await this.requireTeamParticipant(roomCode, sessionToken);
+    const action = await this.prisma.dailyAction.findFirst({ where: { id: actionId, daily: { roomId: room.id } } });
+    if (!action) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La accion no pertenece a este equipo.");
+    await this.prisma.dailyAction.update({ where: { id: action.id }, data: { completed: !action.completed } });
+    await this.touch(room.id, participant.id);
+  }
+
+  async startDaily(roomCode: string, sessionToken: string, dailyId: string) {
+    const { room, participant } = await this.requireTeamModerator(roomCode, sessionToken);
+    const daily = await this.requireDaily(room.id, dailyId);
+    const participants = await this.dailyParticipants(room.id);
+    if (!participants.length) throw new AppError(ErrorCode.PARTICIPANT_NOT_FOUND, "No hay participantes para iniciar la daily.");
+    const now = new Date();
+    await this.prisma.dailySession.update({
+      where: { id: daily.id },
+      data: { status: PrismaDailyStatus.ACTIVE, startedAt: daily.startedAt ?? now, completedAt: null, currentParticipantId: participants[0].id, currentTurnStartedAt: now }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async nextDailyParticipant(roomCode: string, sessionToken: string, dailyId: string) {
+    const { room, participant } = await this.requireTeamModerator(roomCode, sessionToken);
+    const daily = await this.requireDaily(room.id, dailyId);
+    const participants = await this.dailyParticipants(room.id);
+    const currentIndex = participants.findIndex((item) => item.id === daily.currentParticipantId);
+    const next = participants[currentIndex + 1];
+    if (next) {
+      await this.prisma.dailySession.update({ where: { id: daily.id }, data: { status: PrismaDailyStatus.ACTIVE, currentParticipantId: next.id, currentTurnStartedAt: new Date() } });
+    } else {
+      await this.prisma.dailySession.update({ where: { id: daily.id }, data: { status: PrismaDailyStatus.COMPLETED, currentParticipantId: null, currentTurnStartedAt: null, completedAt: new Date() } });
+    }
+    await this.touch(room.id, participant.id);
+  }
+
+  async completeDaily(roomCode: string, sessionToken: string, dailyId: string) {
+    const { room, participant } = await this.requireTeamModerator(roomCode, sessionToken);
+    const daily = await this.requireDaily(room.id, dailyId);
+    await this.prisma.dailySession.update({
+      where: { id: daily.id },
+      data: { status: PrismaDailyStatus.COMPLETED, startedAt: daily.startedAt ?? new Date(), completedAt: new Date(), currentParticipantId: null, currentTurnStartedAt: null }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async createTeamNote(roomCode: string, sessionToken: string, content: string) {
+    const { room, participant } = await this.requireParticipant(roomCode, sessionToken);
+    if (room.type !== PrismaRoomType.TEAM) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta sala no pertenece a un equipo.");
+    const now = new Date();
+    await this.prisma.teamNote.deleteMany({ where: { roomId: room.id, expiresAt: { lte: now } } });
+    await this.prisma.teamNote.create({
+      data: {
+        roomId: room.id,
+        participantId: participant.id,
+        content: sanitizeText(content).slice(0, 500),
+        expiresAt: new Date(now.getTime() + 7 * 86400000)
+      }
+    });
+    await this.touch(room.id, participant.id);
+  }
+
+  async deleteTeamNote(roomCode: string, sessionToken: string, noteId: string) {
+    const { room, participant } = await this.requireParticipant(roomCode, sessionToken);
+    if (room.type !== PrismaRoomType.TEAM) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta sala no pertenece a un equipo.");
+    const note = await this.prisma.teamNote.findFirst({ where: { id: noteId, roomId: room.id } });
+    if (!note) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La nota ya no esta disponible.");
+    if (note.participantId !== participant.id && room.moderatorParticipantId !== participant.id) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Solo el autor o el moderador puede eliminar esta nota.");
+    }
+    await this.prisma.teamNote.delete({ where: { id: note.id } });
+    await this.touch(room.id, participant.id);
+  }
+
+  private async getTeamView(
+    roomId: string,
+    participants: Array<{ id: string; role: PrismaParticipantRole }>,
+    viewerParticipantId?: string,
+    moderatorParticipantId?: string | null
+  ): Promise<TeamRoomView> {
+    const currentDate = new Date();
+    await this.prisma.teamNote.deleteMany({ where: { roomId, expiresAt: { lte: currentDate } } });
+    const [sessions, notes] = await Promise.all([
+      this.prisma.dailySession.findMany({
+        where: { roomId },
+        include: {
+          entries: { include: { participant: true }, orderBy: { submittedAt: "asc" } },
+          blockers: { include: { participant: true }, orderBy: { createdAt: "asc" } },
+          actions: { include: { createdBy: true }, orderBy: { createdAt: "asc" } }
+        },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 30
+      }),
+      this.prisma.teamNote.findMany({
+        where: { roomId, expiresAt: { gt: currentDate } },
+        include: { participant: true },
+        orderBy: { createdAt: "desc" },
+        take: 100
+      })
+    ]);
+    const eligibleCount = Math.max(1, participants.filter((item) => item.role !== PrismaParticipantRole.OBSERVER).length);
+    const now = Date.now();
+    const views: DailySessionView[] = sessions.map((session) => {
+      const durationMinutes = session.startedAt
+        ? Math.max(0, Math.round(((session.completedAt?.getTime() ?? now) - session.startedAt.getTime()) / 60000))
+        : null;
+      return {
+        id: session.id,
+        date: session.date.toISOString().slice(0, 10),
+        mode: session.mode as DailyMode,
+        status: session.status,
+        currentParticipantId: session.currentParticipantId,
+        currentTurnStartedAt: session.currentTurnStartedAt?.toISOString() ?? null,
+        turnDurationSeconds: session.turnDurationSeconds,
+        startedAt: session.startedAt?.toISOString() ?? null,
+        completedAt: session.completedAt?.toISOString() ?? null,
+        durationMinutes,
+        participationRate: Number(((session.entries.length / eligibleCount) * 100).toFixed(1)),
+        entries: session.entries.map((entry) => ({
+          id: entry.id,
+          participantId: entry.participantId,
+          participantName: entry.participant.displayName,
+          yesterday: entry.yesterday,
+          today: entry.today,
+          mood: entry.mood,
+          submittedAt: entry.submittedAt.toISOString(),
+          updatedAt: entry.updatedAt.toISOString()
+        })),
+        blockers: session.blockers.map((blocker) => ({
+          id: blocker.id,
+          dailyId: blocker.dailyId,
+          participantId: blocker.participantId,
+          participantName: blocker.participant.displayName,
+          content: blocker.content,
+          resolvedAt: blocker.resolvedAt?.toISOString() ?? null,
+          resolvedById: blocker.resolvedById,
+          createdAt: blocker.createdAt.toISOString(),
+          ageDays: Math.max(0, Math.floor((now - blocker.createdAt.getTime()) / 86400000))
+        })),
+        actions: session.actions.map((action) => ({
+          id: action.id,
+          dailyId: action.dailyId,
+          content: action.content,
+          assigneeName: action.assigneeName,
+          completed: action.completed,
+          createdByName: action.createdBy.displayName,
+          createdAt: action.createdAt.toISOString()
+        }))
+      };
+    });
+    const blockers = views.flatMap((session) => session.blockers);
+    const completedDurations = views.filter((session) => session.completedAt && session.durationMinutes !== null).map((session) => session.durationMinutes as number);
+    const resolutionDays = blockers
+      .filter((blocker) => blocker.resolvedAt)
+      .map((blocker) => (new Date(blocker.resolvedAt as string).getTime() - new Date(blocker.createdAt).getTime()) / 86400000);
+    const blockerCounts = blockers.reduce<Map<string, { content: string; count: number }>>((counts, blocker) => {
+      const key = blocker.content.trim().toLowerCase();
+      const current = counts.get(key);
+      counts.set(key, { content: current?.content ?? blocker.content, count: (current?.count ?? 0) + 1 });
+      return counts;
+    }, new Map());
+    return {
+      sessions: views,
+      notes: notes.map((note) => ({
+        id: note.id,
+        participantId: note.participantId,
+        participantName: note.participant.displayName,
+        avatarId: note.participant.avatarId as TeamAvatarId | null,
+        content: note.content,
+        createdAt: note.createdAt.toISOString(),
+        expiresAt: note.expiresAt.toISOString(),
+        canDelete: note.participantId === viewerParticipantId || moderatorParticipantId === viewerParticipantId
+      })),
+      metrics: {
+        participationRate: views[0]?.participationRate ?? 0,
+        openBlockers: blockers.filter((blocker) => !blocker.resolvedAt).length,
+        averageDailyMinutes: completedDurations.length ? Number((completedDurations.reduce((sum, value) => sum + value, 0) / completedDurations.length).toFixed(1)) : null,
+        averageResolutionDays: resolutionDays.length ? Number((resolutionDays.reduce((sum, value) => sum + value, 0) / resolutionDays.length).toFixed(1)) : null,
+        recurringBlockers: Array.from(blockerCounts.values()).filter((item) => item.count > 1).sort((a, b) => b.count - a.count).slice(0, 5)
+      }
+    };
+  }
+
   private async findRoom(roomCode: string) {
     const room = await this.prisma.room.findUnique({ where: { code: roomCode.toUpperCase() } });
     if (!room) {
       throw new AppError(ErrorCode.ROOM_NOT_FOUND, "La sala solicitada no existe.");
     }
     return room;
+  }
+
+  private async requireTeamParticipant(roomCode: string, sessionToken: string) {
+    const context = await this.requireParticipant(roomCode, sessionToken);
+    if (context.room.type !== PrismaRoomType.TEAM) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta sala no pertenece a un equipo.");
+    if (context.participant.role === PrismaParticipantRole.OBSERVER) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Los observadores no pueden modificar la daily.");
+    return context;
+  }
+
+  private async requireTeamModerator(roomCode: string, sessionToken: string) {
+    const context = await this.requireModerator(roomCode, sessionToken);
+    if (context.room.type !== PrismaRoomType.TEAM) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta sala no pertenece a un equipo.");
+    return context;
+  }
+
+  private async requireDaily(roomId: string, dailyId: string) {
+    const daily = await this.prisma.dailySession.findFirst({ where: { id: dailyId, roomId } });
+    if (!daily) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La daily no pertenece a este equipo.");
+    return daily;
+  }
+
+  private dailyParticipants(roomId: string) {
+    return this.prisma.participant.findMany({
+      where: { roomId, removedAt: null, role: { not: PrismaParticipantRole.OBSERVER } },
+      orderBy: { joinedAt: "asc" }
+    });
+  }
+
+  private async requireRetroParticipant(roomCode: string, sessionToken: string) {
+    const context = await this.requireParticipant(roomCode, sessionToken);
+    if (context.room.type !== PrismaRoomType.RETROSPECTIVE) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Esta sala no es una retrospectiva.");
+    }
+    if (context.participant.role === PrismaParticipantRole.OBSERVER) {
+      throw new AppError(ErrorCode.FORBIDDEN_ACTION, "Los observadores no pueden modificar la retrospectiva.");
+    }
+    return context;
+  }
+
+  private async requireRetroCard(roomId: string, cardId: string) {
+    const card = await this.prisma.retroCard.findFirst({ where: { id: cardId, roomId } });
+    if (!card) throw new AppError(ErrorCode.FORBIDDEN_ACTION, "La tarjeta no pertenece a esta retrospectiva.");
+    return card;
   }
 
   private ensureRoomOpen(status: PrismaRoomStatus) {
@@ -958,6 +1599,14 @@ export class RoomsService {
 
   private generateSessionToken(): string {
     return randomBytes(32).toString("base64url");
+  }
+
+  private todayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private dateValue(value: string) {
+    return new Date(`${value}T00:00:00.000Z`);
   }
 
   private async generateRoomCode(): Promise<string> {

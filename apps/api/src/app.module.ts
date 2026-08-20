@@ -11,6 +11,7 @@ import { RedisModule } from "./redis/redis.module";
 import { RoomsModule } from "./rooms/rooms.module";
 import { StoriesModule } from "./stories/stories.module";
 import { VotingModule } from "./voting/voting.module";
+import { AuthModule } from "./auth/auth.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { VotingModule } from "./voting/voting.module";
     DatabaseModule,
     RedisModule,
     HealthModule,
+    AuthModule,
     RoomsModule,
     ParticipantsModule,
     StoriesModule,

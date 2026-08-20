@@ -15,6 +15,9 @@ const fallbackMessages: Record<ApiErrorCode, string> = {
   [ApiErrorCode.INVALID_VOTE]: "El voto no es valido.",
   [ApiErrorCode.INVALID_IMPORT]: "El archivo no se pudo importar.",
   [ApiErrorCode.DUPLICATE_PARTICIPANT_NAME]: "Ya existe un participante con ese nombre.",
+  [ApiErrorCode.USER_ALREADY_EXISTS]: "Ya existe una cuenta con ese correo.",
+  [ApiErrorCode.INVALID_CREDENTIALS]: "Correo o contrasena incorrectos.",
+  [ApiErrorCode.AUTH_REQUIRED]: "Inicia sesion para continuar.",
   [ApiErrorCode.HTTP_ERROR]: "No se pudo completar la accion.",
   [ApiErrorCode.INTERNAL_ERROR]: "Ocurrio un error inesperado.",
   [ApiErrorCode.SOCKET_TIMEOUT]: "No se pudo conectar con la sala."

@@ -6,11 +6,30 @@ import {
   avatarReactionSchema,
   chatMessageSchema,
   createStorySchema,
+  dailyActionCreateSchema,
+  dailyActionToggleSchema,
+  dailyBlockerResolveSchema,
+  dailyEntrySchema,
+  dailyIdSchema,
+  dailySessionCreateSchema,
   finalizeStorySchema,
   joinRoomSchema,
   reconnectSchema,
+  retroActionCreateSchema,
+  retroActionIdSchema,
+  retroCardCreateSchema,
+  retroCardIdSchema,
+  retroCardMoveSchema,
+  retroCardUpdateSchema,
+  retroCommentCreateSchema,
+  retroCommentDeleteSchema,
+  retroReactionToggleSchema,
   reorderStoriesSchema,
   roomCrashSchema,
+  teamNoteCreateSchema,
+  teamNoteDeleteSchema,
+  teamPresenceSchema,
+  teamPositionSchema,
   updateStorySchema,
   voteSubmitSchema
 } from "@planning/shared";
@@ -285,6 +304,220 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         startsAt: Date.now() + 250,
         countdown: parsed.action === "boom" ? 3 : 0
       });
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_CARD_CREATE)
+  async createRetroCard(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, retroCardCreateSchema, async (base, dto) => {
+      await this.rooms.createRetroCard(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.RETRO_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_CARD_UPDATE)
+  async updateRetroCard(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCardUpdateSchema).parse(payload);
+      await this.rooms.updateRetroCard(parsed.roomCode, parsed.sessionToken, parsed.cardId, parsed.content);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_CARD_DELETE)
+  async deleteRetroCard(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCardIdSchema).parse(payload);
+      await this.rooms.deleteRetroCard(parsed.roomCode, parsed.sessionToken, parsed.cardId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_CARD_MOVE)
+  async moveRetroCard(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCardMoveSchema).parse(payload);
+      await this.rooms.moveRetroCard(parsed.roomCode, parsed.sessionToken, parsed.cardId, parsed.columnId, parsed.position);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_VOTE_TOGGLE)
+  async toggleRetroVote(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCardIdSchema).parse(payload);
+      await this.rooms.toggleRetroVote(parsed.roomCode, parsed.sessionToken, parsed.cardId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_ACTION_CREATE)
+  async createRetroAction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, retroActionCreateSchema, async (base, dto) => {
+      await this.rooms.createRetroAction(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.RETRO_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_ACTION_TOGGLE)
+  async toggleRetroAction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroActionIdSchema).parse(payload);
+      await this.rooms.toggleRetroAction(parsed.roomCode, parsed.sessionToken, parsed.actionId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_ACTION_DELETE)
+  async deleteRetroAction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroActionIdSchema).parse(payload);
+      await this.rooms.deleteRetroAction(parsed.roomCode, parsed.sessionToken, parsed.actionId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_COMMENT_CREATE)
+  async createRetroComment(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCommentCreateSchema).parse(payload);
+      await this.rooms.createRetroComment(parsed.roomCode, parsed.sessionToken, parsed.cardId, parsed.content);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_COMMENT_DELETE)
+  async deleteRetroComment(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroCommentDeleteSchema).parse(payload);
+      await this.rooms.deleteRetroComment(parsed.roomCode, parsed.sessionToken, parsed.commentId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.RETRO_REACTION_TOGGLE)
+  async toggleRetroReaction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(retroReactionToggleSchema).parse(payload);
+      await this.rooms.toggleRetroReaction(parsed.roomCode, parsed.sessionToken, parsed.cardId, parsed.emoji);
+      await this.broadcastState(parsed.roomCode, ServerEvents.RETRO_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.TEAM_PRESENCE_UPDATE)
+  async updateTeamPresence(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, teamPresenceSchema, async (base, dto) => {
+      await this.rooms.updateTeamPresence(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.TEAM_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.TEAM_POSITION_UPDATE)
+  async updateTeamPosition(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, teamPositionSchema, async (base, dto) => {
+      const event = await this.rooms.updateTeamPosition(base.roomCode, base.sessionToken, dto);
+      this.server.to(base.roomCode).emit(ServerEvents.TEAM_POSITION_UPDATED, event);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.TEAM_NOTE_CREATE)
+  async createTeamNote(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, teamNoteCreateSchema, async (base, dto) => {
+      await this.rooms.createTeamNote(base.roomCode, base.sessionToken, dto.content);
+      await this.broadcastState(base.roomCode, ServerEvents.TEAM_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.TEAM_NOTE_DELETE)
+  async deleteTeamNote(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(teamNoteDeleteSchema).parse(payload);
+      await this.rooms.deleteTeamNote(parsed.roomCode, parsed.sessionToken, parsed.noteId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.TEAM_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_SESSION_CREATE)
+  async createDailySession(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, dailySessionCreateSchema, async (base, dto) => {
+      await this.rooms.createDailySession(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.DAILY_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_ENTRY_UPSERT)
+  async upsertDailyEntry(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, dailyEntrySchema, async (base, dto) => {
+      await this.rooms.upsertDailyEntry(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.DAILY_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_BLOCKER_RESOLVE)
+  async resolveDailyBlocker(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(dailyBlockerResolveSchema).parse(payload);
+      await this.rooms.resolveDailyBlocker(parsed.roomCode, parsed.sessionToken, parsed.blockerId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.DAILY_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_ACTION_CREATE)
+  async createDailyAction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.withToken(client, payload, dailyActionCreateSchema, async (base, dto) => {
+      await this.rooms.createDailyAction(base.roomCode, base.sessionToken, dto);
+      await this.broadcastState(base.roomCode, ServerEvents.DAILY_UPDATED);
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_ACTION_TOGGLE)
+  async toggleDailyAction(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(dailyActionToggleSchema).parse(payload);
+      await this.rooms.toggleDailyAction(parsed.roomCode, parsed.sessionToken, parsed.actionId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.DAILY_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_START)
+  async startDaily(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(dailyIdSchema).parse(payload);
+      await this.rooms.startDaily(parsed.roomCode, parsed.sessionToken, parsed.dailyId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.DAILY_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_NEXT)
+  async nextDailyParticipant(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(dailyIdSchema).parse(payload);
+      await this.rooms.nextDailyParticipant(parsed.roomCode, parsed.sessionToken, parsed.dailyId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.DAILY_UPDATED);
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(ClientEvents.DAILY_COMPLETE)
+  async completeDaily(@ConnectedSocket() client: Socket, @MessageBody() payload: unknown) {
+    return this.wrap(client, async () => {
+      const parsed = tokenSchema.merge(dailyIdSchema).parse(payload);
+      await this.rooms.completeDaily(parsed.roomCode, parsed.sessionToken, parsed.dailyId);
+      await this.broadcastState(parsed.roomCode, ServerEvents.DAILY_UPDATED);
       return { ok: true };
     });
   }

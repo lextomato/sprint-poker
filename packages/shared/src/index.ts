@@ -7,6 +7,40 @@ export const RoomStatus = {
   CLOSED: "CLOSED"
 } as const;
 
+export const RoomType = {
+  PLANNING: "PLANNING",
+  RETROSPECTIVE: "RETROSPECTIVE",
+  TEAM: "TEAM"
+} as const;
+
+export const TeamAvailability = {
+  AVAILABLE: "AVAILABLE",
+  FOCUS: "FOCUS",
+  BUSY: "BUSY",
+  AWAY: "AWAY",
+  BREAK: "BREAK"
+} as const;
+
+export const TeamZone = {
+  TEAM_ROOM: "TEAM_ROOM",
+  DAILY_ROOM: "DAILY_ROOM",
+  PLANNING_ROOM: "PLANNING_ROOM",
+  RETROSPECTIVE_ROOM: "RETROSPECTIVE_ROOM",
+  COFFEE_AREA: "COFFEE_AREA"
+} as const;
+
+export const DailyMode = {
+  SYNCHRONOUS: "SYNCHRONOUS",
+  ASYNCHRONOUS: "ASYNCHRONOUS",
+  HYBRID: "HYBRID"
+} as const;
+
+export const DailyStatus = {
+  OPEN: "OPEN",
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED"
+} as const;
+
 export const ParticipantRole = {
   MODERATOR: "MODERATOR",
   VOTER: "VOTER",
@@ -21,10 +55,15 @@ export const StoryStatus = {
 } as const;
 
 export type RoomStatus = (typeof RoomStatus)[keyof typeof RoomStatus];
+export type RoomType = (typeof RoomType)[keyof typeof RoomType];
 export type ParticipantRole = (typeof ParticipantRole)[keyof typeof ParticipantRole];
 export type StoryStatus = (typeof StoryStatus)[keyof typeof StoryStatus];
+export type TeamAvailability = (typeof TeamAvailability)[keyof typeof TeamAvailability];
+export type TeamZone = (typeof TeamZone)[keyof typeof TeamZone];
+export type DailyMode = (typeof DailyMode)[keyof typeof DailyMode];
+export type DailyStatus = (typeof DailyStatus)[keyof typeof DailyStatus];
 
-export const FIBONACCI_DECK = ["0", "0.5", "1", "2", "3", "5", "8", "13", "20", "40", "100", "?", "BREAK"] as const;
+export const FIBONACCI_DECK = ["0", "0.5", "1", "2", "3", "5", "8", "13", "20", "21", "40", "100", "?", "BREAK"] as const;
 export type VoteValue = (typeof FIBONACCI_DECK)[number] | string;
 
 export const ClientEvents = {
@@ -48,7 +87,30 @@ export const ClientEvents = {
   ROOM_REOPEN: "room:reopen",
   CHAT_SEND: "chat:send",
   REACTION_SEND: "reaction:send",
-  ROOM_CRASH: "room:crash"
+  ROOM_CRASH: "room:crash",
+  RETRO_CARD_CREATE: "retro:card:create",
+  RETRO_CARD_UPDATE: "retro:card:update",
+  RETRO_CARD_DELETE: "retro:card:delete",
+  RETRO_CARD_MOVE: "retro:card:move",
+  RETRO_VOTE_TOGGLE: "retro:vote:toggle",
+  RETRO_ACTION_CREATE: "retro:action:create",
+  RETRO_ACTION_TOGGLE: "retro:action:toggle",
+  RETRO_ACTION_DELETE: "retro:action:delete",
+  RETRO_COMMENT_CREATE: "retro:comment:create",
+  RETRO_COMMENT_DELETE: "retro:comment:delete",
+  RETRO_REACTION_TOGGLE: "retro:reaction:toggle",
+  TEAM_PRESENCE_UPDATE: "team:presence:update",
+  TEAM_POSITION_UPDATE: "team:position:update",
+  TEAM_NOTE_CREATE: "team:note:create",
+  TEAM_NOTE_DELETE: "team:note:delete",
+  DAILY_SESSION_CREATE: "daily:session:create",
+  DAILY_ENTRY_UPSERT: "daily:entry:upsert",
+  DAILY_BLOCKER_RESOLVE: "daily:blocker:resolve",
+  DAILY_ACTION_CREATE: "daily:action:create",
+  DAILY_ACTION_TOGGLE: "daily:action:toggle",
+  DAILY_START: "daily:start",
+  DAILY_NEXT: "daily:next",
+  DAILY_COMPLETE: "daily:complete"
 } as const;
 
 export const ServerEvents = {
@@ -73,6 +135,10 @@ export const ServerEvents = {
   CHAT_UPDATED: "chat:updated",
   REACTION_CREATED: "reaction:created",
   ROOM_CRASH: "room:crash",
+  RETRO_UPDATED: "retro:updated",
+  TEAM_UPDATED: "team:updated",
+  TEAM_POSITION_UPDATED: "team:position:updated",
+  DAILY_UPDATED: "daily:updated",
   ERROR: "error"
 } as const;
 
@@ -92,6 +158,9 @@ export const ApiErrorCode = {
   INVALID_VOTE: "INVALID_VOTE",
   INVALID_IMPORT: "INVALID_IMPORT",
   DUPLICATE_PARTICIPANT_NAME: "DUPLICATE_PARTICIPANT_NAME",
+  USER_ALREADY_EXISTS: "USER_ALREADY_EXISTS",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+  AUTH_REQUIRED: "AUTH_REQUIRED",
   HTTP_ERROR: "HTTP_ERROR",
   INTERNAL_ERROR: "INTERNAL_ERROR",
   SOCKET_TIMEOUT: "SOCKET_TIMEOUT"
@@ -102,6 +171,10 @@ export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 export const roomCodeSchema = z.string().trim().min(4).max(16).regex(/^[A-Z0-9]+$/);
 export const roomNameSchema = z.string().trim().min(3).max(80);
 export const participantNameSchema = z.string().trim().min(2).max(40);
+export const emailSchema = z.string().trim().email().max(254).transform((value) => value.toLowerCase());
+export const passwordSchema = z.string().min(8).max(128);
+export const authRegisterSchema = z.object({ email: emailSchema, password: passwordSchema, displayName: participantNameSchema });
+export const authLoginSchema = z.object({ email: emailSchema, password: passwordSchema });
 export const storyTitleSchema = z.string().trim().min(3).max(200);
 export const longTextSchema = z.string().trim().max(5000).optional().nullable();
 export const roleSchema = z.nativeEnum(ParticipantRole);
@@ -119,6 +192,109 @@ export const avatarReactionSchema = z.object({
 export const roomCrashSchema = z.object({
   action: z.enum(["boom", "back"])
 });
+
+export const retroCardCreateSchema = z.object({
+  columnId: z.string().uuid(),
+  content: z.string().trim().min(1).max(1000),
+  anonymous: z.boolean().default(false)
+});
+
+export const retroCardUpdateSchema = z.object({
+  cardId: z.string().uuid(),
+  content: z.string().trim().min(1).max(1000)
+});
+
+export const retroCardMoveSchema = z.object({
+  cardId: z.string().uuid(),
+  columnId: z.string().uuid(),
+  position: z.number().int().min(1)
+});
+
+export const retroCardIdSchema = z.object({ cardId: z.string().uuid() });
+
+export const retroActionCreateSchema = z.object({
+  content: z.string().trim().min(1).max(500),
+  assigneeName: z.string().trim().max(80).optional().nullable(),
+  cardId: z.string().uuid().optional().nullable()
+});
+
+export const retroActionIdSchema = z.object({ actionId: z.string().uuid() });
+
+export const retroCommentCreateSchema = z.object({
+  cardId: z.string().uuid(),
+  content: z.string().trim().min(1).max(500)
+});
+
+export const retroCommentDeleteSchema = z.object({ commentId: z.string().uuid() });
+
+export const retroReactionToggleSchema = z.object({
+  cardId: z.string().uuid(),
+  emoji: z.string().trim().min(1).max(12)
+});
+
+export const TEAM_AVATAR_IDS = [
+  "sage",
+  "marina",
+  "ember",
+  "teal",
+  "pearl",
+  "coral",
+  "copper",
+  "lilac",
+  "auburn",
+  "moss",
+  "aqua",
+  "amber",
+  "cloud",
+  "snow"
+] as const;
+
+export type TeamAvatarId = (typeof TEAM_AVATAR_IDS)[number];
+export const teamAvatarIdSchema = z.enum(TEAM_AVATAR_IDS);
+
+export const teamPresenceSchema = z.object({
+  availability: z.nativeEnum(TeamAvailability),
+  zone: z.nativeEnum(TeamZone),
+  activity: z.string().trim().max(80).optional().nullable(),
+  avatarId: teamAvatarIdSchema.optional()
+});
+
+export const teamPositionSchema = z.object({
+  x: z.number().min(0.03).max(0.97),
+  y: z.number().min(0.05).max(0.95),
+  zone: z.nativeEnum(TeamZone)
+});
+
+export const teamNoteCreateSchema = z.object({
+  content: z.string().trim().min(1).max(500)
+});
+
+export const teamNoteDeleteSchema = z.object({ noteId: z.string().uuid() });
+
+export const dailySessionCreateSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  mode: z.nativeEnum(DailyMode),
+  turnDurationSeconds: z.number().int().min(30).max(900)
+});
+
+export const dailyEntrySchema = z
+  .object({
+    dailyId: z.string().uuid(),
+    yesterday: z.string().trim().max(2000),
+    today: z.string().trim().max(2000),
+    mood: z.string().trim().max(12).optional().nullable(),
+    blocker: z.string().trim().max(500).optional().nullable()
+  })
+  .refine((value) => Boolean(value.yesterday || value.today || value.blocker), "La actualizacion no puede estar vacia.");
+
+export const dailyIdSchema = z.object({ dailyId: z.string().uuid() });
+export const dailyBlockerResolveSchema = z.object({ blockerId: z.string().uuid() });
+export const dailyActionCreateSchema = z.object({
+  dailyId: z.string().uuid(),
+  content: z.string().trim().min(1).max(500),
+  assigneeName: z.string().trim().max(80).optional().nullable()
+});
+export const dailyActionToggleSchema = z.object({ actionId: z.string().uuid() });
 
 export const createRoomSchema = z.object({
   roomName: roomNameSchema,
@@ -168,6 +344,26 @@ export interface ParticipantView {
   hasVoted: boolean;
   joinedAt: string;
   lastActivityAt: string;
+  availability: TeamAvailability;
+  zone: TeamZone;
+  activity: string | null;
+  avatarId: TeamAvatarId | null;
+  userId: string | null;
+  positionX: number;
+  positionY: number;
+}
+
+export interface UserView {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface AuthSessionView {
+  token: string;
+  user: UserView;
 }
 
 export interface StoryView {
@@ -221,6 +417,14 @@ export interface RoomCrashEvent {
   countdown: number;
 }
 
+export interface TeamPositionEvent {
+  participantId: string;
+  x: number;
+  y: number;
+  zone: TeamZone;
+  updatedAt: string;
+}
+
 export interface VoteStatistics {
   count: number;
   min: number | null;
@@ -241,6 +445,7 @@ export interface RoomStateView {
     id: string;
     code: string;
     name: string;
+    type: RoomType;
     status: RoomStatus;
     deck: string[];
     activeStoryId: string | null;
@@ -264,6 +469,136 @@ export interface RoomStateView {
     votes: RevealedVoteView[];
     statistics: VoteStatistics | null;
   }>;
+  retrospective: RetrospectiveView | null;
+  team: TeamRoomView | null;
+  daily: DailySessionView | null;
+}
+
+export interface DailyEntryView {
+  id: string;
+  participantId: string;
+  participantName: string;
+  yesterday: string;
+  today: string;
+  mood: string | null;
+  submittedAt: string;
+  updatedAt: string;
+}
+
+export interface DailyBlockerView {
+  id: string;
+  dailyId: string;
+  participantId: string;
+  participantName: string;
+  content: string;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  createdAt: string;
+  ageDays: number;
+}
+
+export interface DailyActionView {
+  id: string;
+  dailyId: string;
+  content: string;
+  assigneeName: string | null;
+  completed: boolean;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface DailySessionView {
+  id: string;
+  date: string;
+  mode: DailyMode;
+  status: DailyStatus;
+  currentParticipantId: string | null;
+  currentTurnStartedAt: string | null;
+  turnDurationSeconds: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMinutes: number | null;
+  participationRate: number;
+  entries: DailyEntryView[];
+  blockers: DailyBlockerView[];
+  actions: DailyActionView[];
+}
+
+export interface TeamRoomView {
+  sessions: DailySessionView[];
+  notes: TeamNoteView[];
+  metrics: {
+    participationRate: number;
+    openBlockers: number;
+    averageDailyMinutes: number | null;
+    averageResolutionDays: number | null;
+    recurringBlockers: Array<{ content: string; count: number }>;
+  };
+}
+
+export interface TeamNoteView {
+  id: string;
+  participantId: string;
+  participantName: string;
+  avatarId: TeamAvatarId | null;
+  content: string;
+  createdAt: string;
+  expiresAt: string;
+  canDelete: boolean;
+}
+
+export interface RetroColumnView {
+  id: string;
+  title: string;
+  color: string;
+  position: number;
+}
+
+export interface RetroCardView {
+  id: string;
+  columnId: string;
+  participantId: string | null;
+  authorName: string | null;
+  content: string;
+  anonymous: boolean;
+  position: number;
+  voteCount: number;
+  voterIds: string[];
+  votedByMe: boolean;
+  canEdit: boolean;
+  comments: RetroCommentView[];
+  reactions: RetroReactionView[];
+  createdAt: string;
+}
+
+export interface RetroCommentView {
+  id: string;
+  participantId: string;
+  participantName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface RetroReactionView {
+  emoji: string;
+  count: number;
+  participantIds: string[];
+}
+
+export interface RetroActionView {
+  id: string;
+  cardId: string | null;
+  content: string;
+  assigneeName: string | null;
+  completed: boolean;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface RetrospectiveView {
+  columns: RetroColumnView[];
+  cards: RetroCardView[];
+  actions: RetroActionView[];
 }
 
 export interface StoryImportCandidate {

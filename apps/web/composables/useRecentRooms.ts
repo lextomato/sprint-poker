@@ -1,9 +1,10 @@
-import type { RoomStateView, RoomStatus } from "@planning/shared";
+import { RoomType, type RoomStateView, type RoomStatus } from "@planning/shared";
 
 export interface RecentRoom {
   code: string;
   name: string;
   status: RoomStatus;
+  type: RoomType;
   participantName: string | null;
   lastSeenAt: string;
 }
@@ -19,7 +20,9 @@ function readRecentRooms(): RecentRoom[] {
   if (import.meta.server) return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(recentRoomsKey) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isRecentRoom) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(isRecentRoom).map((room) => ({ ...room, type: "type" in room ? (room.type as RoomType) : RoomType.PLANNING }))
+      : [];
   } catch {
     return [];
   }
@@ -50,6 +53,7 @@ export function useRecentRooms() {
       code: state.room.code,
       name: state.room.name,
       status: state.room.status,
+      type: state.room.type,
       participantName: state.me?.displayName ?? null
     });
   }

@@ -1,120 +1,81 @@
 <script setup lang="ts">
-import type { RoomStateView } from "@planning/shared";
+import { RoomType } from "@planning/shared";
 import type { RecentRoom } from "~/composables/useRecentRooms";
 
-const config = useRuntimeConfig();
 const router = useRouter();
-const { showApiError } = useApiErrors();
 const recentRooms = useRecentRooms();
-const createForm = reactive({ roomName: "", participantName: "", firstStoryTitle: "" });
-const joinCode = ref("");
-const loading = ref(false);
 const rooms = computed(() => recentRooms.rooms.value);
 
-onMounted(() => {
-  recentRooms.load();
-});
+onMounted(() => recentRooms.load());
 
-interface CreateRoomResponse {
-  roomCode: string;
-  sessionToken: string;
-  state: RoomStateView;
-}
-
-async function createRoom() {
-  loading.value = true;
-  try {
-    const response = await $fetch<CreateRoomResponse>("/rooms", {
-      baseURL: config.public.apiBaseUrl,
-      method: "POST",
-      body: {
-        roomName: createForm.roomName,
-        participantName: createForm.participantName,
-        ...(createForm.firstStoryTitle.trim() ? { firstStoryTitle: createForm.firstStoryTitle } : {})
-      }
-    });
-    useParticipantSession(response.roomCode).setToken(response.sessionToken);
-    recentRooms.rememberState(response.state);
-    await router.push(`/rooms/${response.roomCode}`);
-  } catch (error) {
-    showApiError(error, "No se pudo crear la sala");
-  } finally {
-    loading.value = false;
-  }
-}
-
-function goJoin() {
-  const code = joinCode.value.trim().toUpperCase();
-  if (code) {
-    router.push(`/join/${code}`);
-  }
-}
-
-function openRecentRoom(room: RecentRoom) {
-  if (recentRooms.hasSession(room.code)) {
-    router.push(`/rooms/${room.code}`);
-    return;
-  }
-  router.push(`/join/${room.code}`);
+function roomDestination(room: RecentRoom) {
+  const base = room.type === RoomType.TEAM ? "/teams" : room.type === RoomType.RETROSPECTIVE ? "/retrospectives" : "/rooms";
+  return recentRooms.hasSession(room.code) ? `${base}/${room.code}` : `/join/${room.code}`;
 }
 </script>
 
 <template>
-  <main class="page-shell min-h-screen px-4 py-8">
-    <div class="fixed right-4 top-4">
-      <ThemeToggle />
-    </div>
-    <section class="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[1fr_420px]">
-      <div class="flex flex-col justify-center">
-        <div class="mb-5">
-          <AppLogo />
+  <main class="page-shell min-h-screen px-4 py-8 sm:px-6">
+    <div class="mx-auto w-full max-w-6xl">
+      <header class="flex items-center justify-between">
+        <AppLogo />
+        <div class="flex items-center gap-1"><AccountMenu /><ThemeToggle /></div>
+      </header>
+      <section class="py-12 text-center sm:py-16">
+        <h1 class="mx-auto max-w-3xl text-4xl font-bold text-gray-950 dark:text-white sm:text-5xl">Una sala para cada conversación del sprint</h1>
+        <p class="mx-auto mt-4 max-w-2xl text-lg text-gray-600 dark:text-gray-300">Elige cómo quiere trabajar el equipo. Sin registro, con colaboración en tiempo real.</p>
+      </section>
+      <section class="grid gap-4 md:grid-cols-3">
+        <NuxtLink to="/teams" class="group rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-400 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-cyan-600">
+          <div class="flex items-start justify-between gap-6">
+            <div>
+              <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300"><UIcon name="i-lucide-layout-dashboard" class="h-6 w-6" /></div>
+              <h2 class="text-xl font-semibold text-gray-950 dark:text-white">Team Room</h2>
+              <p class="mt-2 text-gray-600 dark:text-gray-300">Presencia, Daily Standup y acceso visual a todas las ceremonias.</p>
+            </div>
+            <UIcon name="i-lucide-arrow-right" class="mt-2 h-5 w-5 shrink-0 text-gray-400 transition group-hover:translate-x-1 group-hover:text-cyan-600" />
+          </div>
+        </NuxtLink>
+        <NuxtLink to="/planning" class="group rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-400 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-teal-600">
+          <div class="flex items-start justify-between gap-6">
+            <div>
+              <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300"><UIcon name="i-lucide-spade" class="h-6 w-6" /></div>
+              <h2 class="text-xl font-semibold text-gray-950 dark:text-white">Planning Poker</h2>
+              <p class="mt-2 text-gray-600 dark:text-gray-300">Estima historias, revela votos y acuerda el esfuerzo del próximo sprint.</p>
+            </div>
+            <UIcon name="i-lucide-arrow-right" class="mt-2 h-5 w-5 shrink-0 text-gray-400 transition group-hover:translate-x-1 group-hover:text-teal-600" />
+          </div>
+        </NuxtLink>
+        <NuxtLink to="/retrospectives" class="group rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-amber-600">
+          <div class="flex items-start justify-between gap-6">
+            <div>
+              <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"><UIcon name="i-lucide-panels-top-left" class="h-6 w-6" /></div>
+              <h2 class="text-xl font-semibold text-gray-950 dark:text-white">Retrospectiva</h2>
+              <p class="mt-2 text-gray-600 dark:text-gray-300">Recoge ideas, prioriza con votos y convierte la conversación en acciones.</p>
+            </div>
+            <UIcon name="i-lucide-arrow-right" class="mt-2 h-5 w-5 shrink-0 text-gray-400 transition group-hover:translate-x-1 group-hover:text-amber-600" />
+          </div>
+        </NuxtLink>
+      </section>
+      <section v-if="rooms.length" class="mt-10">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Salas recientes</h2>
+          <span class="text-xs text-gray-400">Guardadas en este navegador</span>
         </div>
-        <h1 class="max-w-xl text-5xl font-bold text-gray-950 dark:text-white">Sprint Poker</h1>
-        <p class="mt-4 max-w-xl text-lg text-gray-600 dark:text-gray-300">Estimaciones agiles en tiempo real con votos privados, revelado simultaneo e historial de sesion.</p>
-        <div class="mt-6 flex max-w-md gap-2">
-          <UInput v-model="joinCode" class="flex-1" placeholder="Codigo de sala" @keyup.enter="goJoin" />
-          <UButton icon="i-lucide-log-in" color="gray" variant="soft" @click="goJoin">Entrar</UButton>
-        </div>
-
-        <section v-if="rooms.length" class="mt-8">
-          <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Salas recientes</h2>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div v-for="room in rooms" :key="room.code" class="rounded-lg border border-gray-200 bg-white/90 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate font-medium text-gray-950 dark:text-white">{{ room.name }}</p>
-                  <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                    <span>{{ room.code }}</span>
-                    <RoomStatusBadge :status="room.status" />
-                    <span v-if="room.participantName">como {{ room.participantName }}</span>
-                  </div>
-                </div>
-                <UButton :icon="recentRooms.hasSession(room.code) ? 'i-lucide-rotate-ccw' : 'i-lucide-log-in'" color="teal" variant="soft" size="xs" @click="openRecentRoom(room)">
-                  {{ recentRooms.hasSession(room.code) ? "Recuperar" : "Entrar" }}
-                </UButton>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <button v-for="room in rooms" :key="room.code" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white/90 p-3 text-left shadow-sm hover:border-teal-300 dark:border-gray-800 dark:bg-gray-900/80" @click="router.push(roomDestination(room))">
+            <div class="min-w-0">
+              <p class="truncate font-medium text-gray-950 dark:text-white">{{ room.name }}</p>
+              <div class="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                <UIcon :name="room.type === RoomType.TEAM ? 'i-lucide-layout-dashboard' : room.type === RoomType.RETROSPECTIVE ? 'i-lucide-panels-top-left' : 'i-lucide-spade'" class="h-3.5 w-3.5" />
+                <span>{{ room.code }}</span>
+                <RoomStatusBadge :status="room.status" />
               </div>
             </div>
-          </div>
-        </section>
-      </div>
-
-      <UCard>
-        <template #header>
-          <h2 class="font-semibold">Crear sala</h2>
-        </template>
-        <UForm :state="createForm" class="space-y-4" @submit="createRoom">
-          <UFormGroup label="Nombre de la sala" name="roomName" required>
-            <UInput v-model="createForm.roomName" minlength="3" maxlength="80" />
-          </UFormGroup>
-          <UFormGroup label="Tu nombre" name="participantName" required>
-            <UInput v-model="createForm.participantName" minlength="2" maxlength="40" />
-          </UFormGroup>
-          <UFormGroup label="Primera HDU opcional" name="firstStoryTitle">
-            <UInput v-model="createForm.firstStoryTitle" maxlength="200" />
-          </UFormGroup>
-          <UButton type="submit" block color="teal" icon="i-lucide-plus-circle" :loading="loading">Crear sala</UButton>
-        </UForm>
-      </UCard>
-    </section>
+            <UIcon :name="recentRooms.hasSession(room.code) ? 'i-lucide-rotate-ccw' : 'i-lucide-log-in'" class="h-4 w-4 shrink-0 text-teal-600" />
+          </button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>

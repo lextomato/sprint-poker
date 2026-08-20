@@ -1,6 +1,6 @@
 # Sprint Poker
 
-Sprint Poker is a functional MVP for realtime agile estimation with private Planning Poker votes, simultaneous reveal, basic statistics, final estimates, reconnection, and persisted session history.
+Sprint Poker is a realtime collaboration suite for agile teams. It includes Planning Poker, collaborative retrospectives, Daily Standup, and a persistent Virtual Team Room organized into ceremony zones. Accounts are optional: registered users can recover their teams across devices, while every module remains available to guests through room codes.
 
 ## Requirements
 
@@ -86,13 +86,21 @@ apps/api      NestJS modular monolith, REST recovery API, Socket.IO gateway
 packages/shared  shared enums, Zod schemas, event names, DTO-facing view contracts
 ```
 
-PostgreSQL is the source of truth for rooms, participants, stories, rounds, votes, and final estimates. Redis stores ephemeral socket and presence mappings so the system can move toward a Socket.IO Redis adapter later.
+PostgreSQL is the source of truth for optional user accounts, rooms, team presence, dailys, blockers, action items, stories, votes, and retrospective content. Redis stores ephemeral socket and presence mappings so the system can move toward a Socket.IO Redis adapter later.
 
 ## REST API
 
 The API uses `/api/v1` as global prefix.
 
 - `POST /rooms`
+- `POST /retrospectives`
+- `POST /teams`
+- `GET /teams/mine`
+- `POST /teams/:roomCode/access`
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me`
+- `POST /auth/logout`
 - `GET /rooms/:roomCode`
 - `POST /rooms/:roomCode/join`
 - `POST /rooms/:roomCode/reconnect`
@@ -129,6 +137,26 @@ room:close
 room:reopen
 chat:send
 reaction:send
+retro:card:create
+retro:card:update
+retro:card:delete
+retro:card:move
+retro:vote:toggle
+retro:action:create
+retro:action:toggle
+retro:action:delete
+retro:comment:create
+retro:comment:delete
+retro:reaction:toggle
+team:presence:update
+daily:session:create
+daily:entry:upsert
+daily:blocker:resolve
+daily:action:create
+daily:action:toggle
+daily:start
+daily:next
+daily:complete
 ```
 
 Server to client:
@@ -140,6 +168,9 @@ room:closed
 room:reopened
 chat:updated
 reaction:created
+retro:updated
+team:updated
+daily:updated
 participant:joined
 participant:left
 participant:updated
@@ -162,7 +193,7 @@ Before reveal, vote broadcasts include only `participantId`, `hasVoted`, and an 
 ## Technical Decisions
 
 - Modular monolith instead of microservices.
-- Sessionless participation with random `sessionToken` persisted in local storage and development cookies.
+- Guest participation uses a random room `sessionToken`; optional accounts use separate hashed long-lived sessions and can recover linked teams.
 - Shared Zod schemas and TypeScript view contracts avoid duplicating frontend/backend event contracts.
 - Final estimate is manual; statistics never set story estimates automatically.
 - Redis is used only for ephemeral connection state; critical data stays in PostgreSQL.
@@ -173,7 +204,7 @@ Before reveal, vote broadcasts include only `participantId`, `hasVoted`, and an 
 - AI features
 - Jira/GitHub integrations
 - Enterprise organizations
-- Full registered-user authentication
+- Password recovery and email verification
 - Automatic moderator transfer
 - Custom decks UI, though the model is prepared for it
 

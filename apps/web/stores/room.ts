@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import type { RoomStateView } from "@planning/shared";
+import type { RoomStateView, TeamPositionEvent } from "@planning/shared";
 
 export const useRoomStore = defineStore("room", {
   state: () => ({
@@ -15,6 +15,17 @@ export const useRoomStore = defineStore("room", {
     setState(next: RoomStateView) {
       const previousMe = this.state?.me;
       this.state = { ...next, me: next.me ?? previousMe };
+    },
+    patchTeamPosition(event: TeamPositionEvent) {
+      if (!this.state) return;
+      const patch = (participant: RoomStateView["participants"][number]) => participant.id === event.participantId
+        ? { ...participant, positionX: event.x, positionY: event.y, zone: event.zone, lastActivityAt: event.updatedAt, connected: true }
+        : participant;
+      this.state = {
+        ...this.state,
+        me: this.state.me ? patch(this.state.me) : undefined,
+        participants: this.state.participants.map(patch)
+      };
     },
     clear() {
       this.state = null;

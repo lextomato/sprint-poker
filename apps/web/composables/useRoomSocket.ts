@@ -1,5 +1,5 @@
 import { io, type Socket } from "socket.io-client";
-import { ApiErrorCode, ClientEvents, ServerEvents, type ApiErrorBody, type ParticipantRole, type RoomCrashEvent, type RoomStateView } from "@planning/shared";
+import { ApiErrorCode, ClientEvents, ServerEvents, type ApiErrorBody, type ParticipantRole, type RoomCrashEvent, type RoomStateView, type TeamPositionEvent } from "@planning/shared";
 
 interface SocketResponse {
   ok: boolean;
@@ -25,6 +25,19 @@ export function useRoomSocket(roomCode: string) {
 
   function applyState(state: RoomStateView) {
     const previousRoom = roomStore.state?.room;
+    const previousRetroCards = new Map(roomStore.state?.retrospective?.cards.map((card) => [card.id, card]) ?? []);
+    if (state.retrospective) {
+      state = {
+        ...state,
+        retrospective: {
+          ...state.retrospective,
+          cards: state.retrospective.cards.map((card) => ({
+            ...card,
+            canEdit: card.canEdit || previousRetroCards.get(card.id)?.canEdit === true
+          }))
+        }
+      };
+    }
     roomStore.setState(state);
     participantStore.setMe(state.me);
     storiesStore.setStories(state.stories);
@@ -60,6 +73,7 @@ export function useRoomSocket(roomCode: string) {
     socket.on(ServerEvents.ROOM_CRASH, (event: RoomCrashEvent) => {
       window.dispatchEvent(new CustomEvent<RoomCrashEvent>("planning-room-crash", { detail: event }));
     });
+    socket.on(ServerEvents.TEAM_POSITION_UPDATED, (event: TeamPositionEvent) => roomStore.patchTeamPosition(event));
 
     const stateEvents = [
       ServerEvents.ROOM_STATE,
@@ -78,7 +92,10 @@ export function useRoomSocket(roomCode: string) {
       ServerEvents.ROUND_RESTARTED,
       ServerEvents.ROOM_REOPENED,
       ServerEvents.CHAT_UPDATED,
-      ServerEvents.REACTION_CREATED
+      ServerEvents.REACTION_CREATED,
+      ServerEvents.RETRO_UPDATED,
+      ServerEvents.TEAM_UPDATED,
+      ServerEvents.DAILY_UPDATED
     ];
     for (const event of stateEvents) {
       socket.on(event, (state: RoomStateView) => applyState(state));
@@ -105,6 +122,10 @@ export function useRoomSocket(roomCode: string) {
         resolve(response);
       });
     });
+  }
+
+  function emitVolatile(event: string, payload: Record<string, unknown>) {
+    connect().volatile.emit(event, payload);
   }
 
   async function join(participantName: string, role: ParticipantRole) {
@@ -139,6 +160,7 @@ export function useRoomSocket(roomCode: string) {
     join,
     sync,
     emit,
+    emitVolatile,
     withSession
   };
 }

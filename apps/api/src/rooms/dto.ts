@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsEnum, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from "class-validator";
-import { ParticipantRole } from "@planning/shared";
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf } from "class-validator";
+import { DailyMode, ParticipantRole } from "@planning/shared";
 
 export class CreateRoomDto {
   @ApiProperty()
@@ -18,6 +18,40 @@ export class CreateRoomDto {
   @IsString()
   @Length(3, 200)
   firstStoryTitle?: string;
+}
+
+export class CreateRetrospectiveDto {
+  @ApiProperty()
+  @IsString()
+  @Length(3, 80)
+  roomName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @Length(2, 40)
+  participantName!: string;
+}
+
+export class CreateTeamDto {
+  @ApiProperty()
+  @IsString()
+  @Length(3, 80)
+  roomName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @Length(2, 40)
+  participantName!: string;
+
+  @ApiProperty({ enum: DailyMode })
+  @IsEnum(DailyMode)
+  dailyMode!: DailyMode;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(30)
+  @Max(900)
+  turnDurationSeconds!: number;
 }
 
 export class JoinRoomDto {

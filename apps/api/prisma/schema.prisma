@@ -14,6 +14,40 @@ enum RoomStatus {
   CLOSED
 }
 
+enum RoomType {
+  PLANNING
+  RETROSPECTIVE
+  TEAM
+}
+
+enum TeamAvailability {
+  AVAILABLE
+  FOCUS
+  BUSY
+  AWAY
+  BREAK
+}
+
+enum TeamZone {
+  TEAM_ROOM
+  DAILY_ROOM
+  PLANNING_ROOM
+  RETROSPECTIVE_ROOM
+  COFFEE_AREA
+}
+
+enum DailyMode {
+  SYNCHRONOUS
+  ASYNCHRONOUS
+  HYBRID
+}
+
+enum DailyStatus {
+  OPEN
+  ACTIVE
+  COMPLETED
+}
+
 enum ParticipantRole {
   MODERATOR
   VOTER
@@ -28,57 +62,284 @@ enum StoryStatus {
 }
 
 model Room {
-  id                     String             @id @default(uuid())
-  code                   String             @unique
+  id                     String            @id @default(uuid())
+  code                   String            @unique
   name                   String
-  status                 RoomStatus         @default(WAITING)
-  deck                   String             @default("FIBONACCI")
+  type                   RoomType          @default(PLANNING)
+  status                 RoomStatus        @default(WAITING)
+  deck                   String            @default("FIBONACCI")
   activeStoryId          String?
-  currentRound           Int                @default(0)
+  currentRound           Int               @default(0)
   moderatorParticipantId String?
   revealConfig           Json?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  lastActivityAt         DateTime           @default(now())
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  lastActivityAt         DateTime          @default(now())
   closedAt               DateTime?
+  ownerUserId            String?
+  owner                  User?             @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   participants           Participant[]
   stories                Story[]
   rounds                 EstimationRound[]
   votes                  Vote[]
   chatMessages           ChatMessage[]
   reactions              AvatarReaction[]
+  retroColumns           RetroColumn[]
+  retroCards             RetroCard[]
+  retroActions           RetroAction[]
+  dailySessions          DailySession[]
+  teamNotes              TeamNote[]
 
   @@index([code])
   @@index([status])
+  @@index([ownerUserId])
 }
 
 model Participant {
-  id             String          @id @default(uuid())
+  id             String           @id @default(uuid())
   roomId         String
   displayName    String
-  sessionToken   String          @unique
-  role           ParticipantRole @default(VOTER)
-  connected      Boolean         @default(false)
+  sessionToken   String           @unique
+  role           ParticipantRole  @default(VOTER)
+  connected      Boolean          @default(false)
   removedAt      DateTime?
-  joinedAt       DateTime        @default(now())
-  lastActivityAt DateTime        @default(now())
-  room           Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime         @default(now())
+  lastActivityAt DateTime         @default(now())
+  room           Room             @relation(fields: [roomId], references: [id], onDelete: Cascade)
   votes          Vote[]
   chatMessages   ChatMessage[]
   reactions      AvatarReaction[]
+  retroCards     RetroCard[]
+  retroVotes     RetroVote[]
+  retroActions   RetroAction[]
+  retroComments  RetroComment[]
+  retroReactions RetroReaction[]
+  availability   TeamAvailability @default(AVAILABLE)
+  zone           TeamZone         @default(TEAM_ROOM)
+  activity       String?
+  avatarId       String?
+  positionX      Float            @default(0.5)
+  positionY      Float            @default(0.5)
+  userId         String?
+  user           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  dailyEntries   DailyEntry[]
+  dailyBlockers  DailyBlocker[]
+  dailyActions   DailyAction[]
+  teamNotes      TeamNote[]
 
   @@unique([roomId, displayName])
   @@index([roomId, role])
+  @@index([userId])
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  displayName  String
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  lastLoginAt  DateTime?
+  sessions     UserSession[]
+  ownedRooms   Room[]
+  participants Participant[]
+}
+
+model UserSession {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TeamNote {
+  id            String      @id @default(uuid())
+  roomId        String
+  participantId String
+  content       String
+  createdAt     DateTime    @default(now())
+  expiresAt     DateTime
+  room          Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, expiresAt])
+  @@index([participantId, createdAt])
+}
+
+model DailySession {
+  id                   String         @id @default(uuid())
+  roomId               String
+  date                 DateTime       @db.Date
+  mode                 DailyMode      @default(HYBRID)
+  status               DailyStatus    @default(OPEN)
+  currentParticipantId String?
+  currentTurnStartedAt DateTime?
+  turnDurationSeconds  Int            @default(120)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  room                 Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  entries              DailyEntry[]
+  blockers             DailyBlocker[]
+  actions              DailyAction[]
+
+  @@unique([roomId, date])
+  @@index([roomId, status, date])
+}
+
+model DailyEntry {
+  id            String       @id @default(uuid())
+  dailyId       String
+  participantId String
+  yesterday     String       @default("")
+  today         String       @default("")
+  mood          String?
+  submittedAt   DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  daily         DailySession @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([dailyId, participantId])
+  @@index([participantId, submittedAt])
+}
+
+model DailyBlocker {
+  id            String       @id @default(uuid())
+  dailyId       String
+  participantId String
+  content       String
+  resolvedAt    DateTime?
+  resolvedById  String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  daily         DailySession @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([dailyId, resolvedAt])
+  @@index([participantId, createdAt])
+}
+
+model DailyAction {
+  id           String       @id @default(uuid())
+  dailyId      String
+  createdById  String
+  content      String
+  assigneeName String?
+  completed    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  daily        DailySession @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  createdBy    Participant  @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([dailyId, completed])
+}
+
+model RetroColumn {
+  id       String      @id @default(uuid())
+  roomId   String
+  title    String
+  color    String
+  position Int
+  room     Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  cards    RetroCard[]
+
+  @@unique([roomId, position])
+  @@index([roomId])
+}
+
+model RetroCard {
+  id            String          @id @default(uuid())
+  roomId        String
+  columnId      String
+  participantId String?
+  content       String
+  anonymous     Boolean         @default(false)
+  position      Int
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  room          Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  column        RetroColumn     @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  participant   Participant?    @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  votes         RetroVote[]
+  actions       RetroAction[]
+  comments      RetroComment[]
+  reactions     RetroReaction[]
+
+  @@index([roomId, columnId, position])
+  @@index([participantId])
+}
+
+model RetroVote {
+  id            String      @id @default(uuid())
+  cardId        String
+  participantId String
+  createdAt     DateTime    @default(now())
+  card          RetroCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, participantId])
+  @@index([participantId])
+}
+
+model RetroAction {
+  id           String      @id @default(uuid())
+  roomId       String
+  cardId       String?
+  createdById  String
+  content      String
+  assigneeName String?
+  completed    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  room         Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  card         RetroCard?  @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  createdBy    Participant @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, completed])
+}
+
+model RetroComment {
+  id            String      @id @default(uuid())
+  cardId        String
+  participantId String
+  content       String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  card          RetroCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+  @@index([participantId])
+}
+
+model RetroReaction {
+  id            String      @id @default(uuid())
+  cardId        String
+  participantId String
+  emoji         String
+  createdAt     DateTime    @default(now())
+  card          RetroCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, participantId, emoji])
+  @@index([cardId])
+  @@index([participantId])
 }
 
 model Story {
-  id                 String      @id @default(uuid())
+  id                 String            @id @default(uuid())
   roomId             String
   title              String
   description        String?
   acceptanceCriteria String?
   position           Int
-  status             StoryStatus @default(PENDING)
+  status             StoryStatus       @default(PENDING)
   finalEstimate      String?
   source             String?
   externalId         String?
@@ -86,9 +347,9 @@ model Story {
   workflowStatus     String?
   taskType           String?
   originalEstimate   String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-  room               Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  room               Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
   rounds             EstimationRound[]
   votes              Vote[]
 
