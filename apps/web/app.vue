@@ -11,5 +11,6 @@ onMounted(initTheme);
       <NuxtPage />
       <UNotifications />
     </div>
+    <CoffeeDonationButton />
   </NuxtLayout>
 </template>

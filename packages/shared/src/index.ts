@@ -246,7 +246,11 @@ export const TEAM_AVATAR_IDS = [
   "aqua",
   "amber",
   "cloud",
-  "snow"
+  "snow",
+  "curly",
+  "coral-overshirt",
+  "mustard",
+  "cream"
 ] as const;
 
 export type TeamAvatarId = (typeof TEAM_AVATAR_IDS)[number];

@@ -1,10 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import type { AuthSessionView, UserView } from "@planning/shared";
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { AppError, ErrorCode } from "../common/app-error";
 import { sanitizeText } from "../common/sanitize";
 import { PrismaService } from "../database/prisma.service";
+import { MailService } from "../mail/mail.service";
 import type { LoginDto, RegisterDto } from "./dto";
 
 const scryptAsync = promisify(scrypt);
@@ -12,7 +13,9 @@ const sessionDays = 90;
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(private readonly prisma: PrismaService, private readonly mail: MailService) {}
 
   async register(dto: RegisterDto): Promise<AuthSessionView> {
     const email = dto.email.trim().toLowerCase();
@@ -31,6 +34,49 @@ export class AuthService {
     }
     const updated = await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     return this.createSession(updated);
+  }
+
+  async requestPasswordReset(rawEmail: string) {
+    const email = rawEmail.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const message = "Si existe una cuenta con ese correo, enviaremos instrucciones para recuperar el acceso.";
+    if (!user) return { message };
+
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = this.hashToken(token);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      await transaction.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+    });
+
+    void this.mail.sendPasswordReset({ email: user.email, displayName: user.displayName, token }).catch(async (error: unknown) => {
+      await this.prisma.passwordResetToken.deleteMany({ where: { tokenHash } });
+      this.logger.error("Password recovery email could not be sent.", error instanceof Error ? error.stack : undefined);
+    });
+    return { message };
+  }
+
+  async resetPassword(token: string, password: string) {
+    const tokenHash = this.hashToken(token);
+    const reset = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    if (!reset || reset.expiresAt <= new Date()) {
+      throw new BadRequestException("El enlace de recuperacion no es valido o ya vencio.");
+    }
+
+    const passwordHash = await this.hashPassword(password);
+    await this.prisma.$transaction(async (transaction) => {
+      const consumed = await transaction.passwordResetToken.deleteMany({
+        where: { id: reset.id, expiresAt: { gt: new Date() } }
+      });
+      if (consumed.count !== 1) {
+        throw new BadRequestException("El enlace de recuperacion no es valido o ya vencio.");
+      }
+      await transaction.user.update({ where: { id: reset.userId }, data: { passwordHash } });
+      await transaction.userSession.deleteMany({ where: { userId: reset.userId } });
+      await transaction.passwordResetToken.deleteMany({ where: { userId: reset.userId } });
+    });
+    return { message: "Contrasena actualizada. Ya puedes iniciar sesion." };
   }
 
   async resolveToken(token?: string | null) {

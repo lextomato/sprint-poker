@@ -2,7 +2,7 @@
 import { DailyStatus, RoomStatus, RoomType, type DailySessionView, type RoomStateView } from "@planning/shared";
 import type { RecentRoom } from "~/composables/useRecentRooms";
 import type { TeamGadgetId } from "~/game/teamRoomWorld";
-import { participantAvatar, teamAvatarImage } from "~/utils/teamAvatars";
+import { isDirectionalTeamAvatar, participantAvatar, teamAvatarImage } from "~/utils/teamAvatars";
 
 const props = defineProps<{
   roomCode: string;
@@ -111,7 +111,7 @@ async function publishNote() {
           <div class="divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
             <article v-for="participant in eligibleParticipants" :key="participant.id" class="p-3">
               <div class="flex items-center gap-3">
-                <img :src="teamAvatarImage(participantAvatar(participant.avatarId, participant.id))" alt="" class="h-10 w-10 object-contain [image-rendering:pixelated]" />
+                <img :src="teamAvatarImage(participantAvatar(participant.avatarId, participant.id))" alt="" class="h-10 w-10 object-contain" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(participantAvatar(participant.avatarId, participant.id)) }" />
                 <div class="min-w-0 flex-1"><p class="font-medium">{{ participant.displayName }} <span v-if="entryFor(participant.id)?.mood">{{ entryFor(participant.id)?.mood }}</span></p><p class="text-xs" :class="entryFor(participant.id) ? 'text-emerald-600' : 'text-amber-600'">{{ entryFor(participant.id) ? 'Actualizado' : 'Pendiente' }}</p></div>
                 <UIcon :name="entryFor(participant.id) ? 'i-lucide-circle-check' : 'i-lucide-clock-3'" :class="entryFor(participant.id) ? 'text-emerald-500' : 'text-amber-500'" />
               </div>
@@ -147,7 +147,7 @@ async function publishNote() {
           <div v-if="notes.length" class="grid gap-3 md:grid-cols-2">
             <article v-for="note in notes" :key="note.id" class="relative border-l-4 border-rose-400 bg-gray-50 p-3 dark:bg-gray-800">
               <div class="flex items-start gap-3">
-                <img :src="teamAvatarImage(participantAvatar(note.avatarId, note.participantId))" alt="" class="h-9 w-9 shrink-0 object-contain [image-rendering:pixelated]" />
+                <img :src="teamAvatarImage(participantAvatar(note.avatarId, note.participantId))" alt="" class="h-9 w-9 shrink-0 object-contain" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(participantAvatar(note.avatarId, note.participantId)) }" />
                 <div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><p class="text-sm font-semibold">{{ note.participantName }}</p><UButton v-if="note.canDelete" icon="i-lucide-trash-2" size="xs" color="red" variant="ghost" aria-label="Eliminar nota" @click="team.deleteNote(note.id)" /></div><p class="mt-1 whitespace-pre-wrap text-sm">{{ note.content }}</p><p class="mt-2 text-xs text-gray-500">{{ expiryLabel(note.expiresAt) }}</p></div>
               </div>
             </article>
@@ -165,3 +165,9 @@ async function publishNote() {
     </UCard>
   </UModal>
 </template>
+
+<style scoped>
+.pixel-avatar {
+  image-rendering: pixelated;
+}
+</style>

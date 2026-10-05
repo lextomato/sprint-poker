@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { DailyStatus, RoomType, TeamAvailability, TeamZone, type ParticipantView, type TeamAvatarId } from "@planning/shared";
 import type { TeamGadgetId } from "~/game/teamRoomWorld";
-import { fallbackTeamAvatar, participantAvatar, teamAvatarImage, teamAvatarOptions } from "~/utils/teamAvatars";
+import { fallbackTeamAvatar, isDirectionalTeamAvatar, participantAvatar, teamAvatarImage, teamAvatarOptions } from "~/utils/teamAvatars";
 
 const route = useRoute();
 const router = useRouter();
@@ -139,7 +139,7 @@ async function enterZone(zone: TeamZone) {
           type="button"
           @click="avatarPickerOpen = true"
         >
-          <img :src="teamAvatarImage(selectedAvatarId)" alt="" class="pixel-avatar h-8 w-8 object-contain" />
+          <img :src="teamAvatarImage(selectedAvatarId)" alt="" class="h-8 w-8 object-contain" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(selectedAvatarId) }" />
           <span>Avatar</span>
           <UIcon name="i-lucide-pencil" class="h-3.5 w-3.5 text-gray-400" />
         </button>
@@ -194,7 +194,7 @@ async function enterZone(zone: TeamZone) {
               @click="selectedMember = member"
             >
               <span class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-cyan-50 dark:bg-cyan-950">
-                <img :src="teamAvatarImage(participantAvatar(member.avatarId, member.id))" alt="" class="pixel-avatar h-9 w-9 object-contain" />
+                <img :src="teamAvatarImage(participantAvatar(member.avatarId, member.id))" alt="" class="h-9 w-9 object-contain" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(participantAvatar(member.avatarId, member.id)) }" />
                 <span class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-gray-900" :class="member.connected ? availabilityColor(member) : 'bg-gray-400'" />
               </span>
               <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ member.displayName }}</span><span class="block truncate text-xs text-gray-500">{{ member.activity || availabilityLabel(member) }}</span></span>
@@ -207,7 +207,7 @@ async function enterZone(zone: TeamZone) {
         <UCard v-if="selectedMember">
           <template #header>
             <div class="flex items-center gap-3">
-              <span class="flex h-12 w-12 items-center justify-center rounded-md bg-cyan-50 dark:bg-cyan-950"><img :src="teamAvatarImage(participantAvatar(selectedMember.avatarId, selectedMember.id))" alt="" class="pixel-avatar h-11 w-11 object-contain" /></span>
+              <span class="flex h-12 w-12 items-center justify-center rounded-md bg-cyan-50 dark:bg-cyan-950"><img :src="teamAvatarImage(participantAvatar(selectedMember.avatarId, selectedMember.id))" alt="" class="h-11 w-11 object-contain" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(participantAvatar(selectedMember.avatarId, selectedMember.id)) }" /></span>
               <div><h2 class="font-semibold">{{ selectedMember.displayName }}</h2><p class="text-sm text-gray-500">{{ availabilityLabel(selectedMember) }}</p></div>
             </div>
           </template>
@@ -238,7 +238,7 @@ async function enterZone(zone: TeamZone) {
               :aria-pressed="selectedAvatarId === avatar.id"
               @click="selectAvatar(avatar.id)"
             >
-              <img :src="avatar.src" :alt="avatar.label" class="pixel-avatar h-14 w-14 object-contain transition group-hover:-translate-y-0.5" />
+              <img :src="avatar.src" :alt="avatar.label" class="h-14 w-14 object-contain transition group-hover:-translate-y-0.5" :class="{ 'pixel-avatar': !isDirectionalTeamAvatar(avatar.id) }" />
               <span class="w-full truncate text-center text-xs font-medium">{{ avatar.label }}</span>
               <UIcon v-if="selectedAvatarId === avatar.id" name="i-lucide-circle-check" class="absolute right-1 top-1 h-4 w-4 text-cyan-600" />
             </button>

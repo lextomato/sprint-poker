@@ -107,4 +107,9 @@ watch(() => props.dark, mountWorld);
   max-width: 100%;
   touch-action: none;
 }
+
+.team-room-canvas :deep(canvas:focus-visible) {
+  outline: 2px solid #0d9488;
+  outline-offset: -2px;
+}
 </style>
